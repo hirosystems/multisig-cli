@@ -332,7 +332,12 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
   // Conditional fields
   if (input.nonce) {
     options.nonce = BigInt(input.nonce);
+  } else {
+    // Shouldn't Stacks.js automatically set nonce if not given?
+    const addr = makeMultiSigAddr(publicKeys, numSignatures);
+    options.nonce = await StxTx.getNonce(addr);
   }
+
   if (input.fee) {
     options.fee = BigInt(input.fee);
   }
