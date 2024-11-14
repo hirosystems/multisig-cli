@@ -201,7 +201,9 @@ describe('Transaction building', async () => {
     it('Should have correct fee, nonce, and hash mode', () => {
       expect(spendingCondition.fee).toEqual(300n);
       expect(spendingCondition.nonce).toEqual(4n);
-      expect(spendingCondition.hashMode).toEqual(StxTx.AddressHashMode.SerializeP2SH);
+      // Accept either legacy or order-independent multisig types
+      let baseHashMode = spendingCondition.hashMode & ~0x04;
+      expect(baseHashMode).toEqual(StxTx.AddressHashMode.SerializeP2SH);
     });
   });
 
@@ -268,7 +270,9 @@ describe('Transaction building', async () => {
       });
 
       it(`Tx ${i} should have correct fee, nonce, and hash mode`, () => {
-        expect(spendingCondition.hashMode).toEqual(StxTx.AddressHashMode.SerializeP2SH);
+        // Accept either legacy or order-independent multisig types
+        let baseHashMode = spendingCondition.hashMode & ~0x04;
+        expect(baseHashMode).toEqual(StxTx.AddressHashMode.SerializeP2SH);
         if (input.nonce) {
           expect(spendingCondition.nonce).toEqual(BigInt(input.nonce));
         }

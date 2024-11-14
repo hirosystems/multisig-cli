@@ -359,6 +359,11 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
   const authFields = makeSpendingConditionFields(publicKeys);
   setMultisigTransactionSpendingConditionFields(unsignedTx, authFields);
 
+  // --> FIXME <--
+  // This is a hack to force SIP-027 transactions
+  // Ideally we'd update `@stacks/transactions` to 6.16 or higher, but that breaks a lot of things
+  unsignedTx.auth.spendingCondition.hashMode |= 0x04;
+
   return unsignedTx;
 }
 
@@ -470,15 +475,6 @@ export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: Stacks
 
   if (index < 0) {
     throw new Error(`Pubkey ${pubkey} not found in spending auth fields: ${pubkeys}`);
-  }
-
-  // Signing must be done in order of pubkey appearance in authFields
-  // We can't proceed if order is wrong
-  const signersAfter = getSignersAfter(pubkey, authFields);
-  if (!signersAfter) {
-    throw new Error(`Pubkey in auth fields but not found by getSignersAfter(): ${pubkey}`);
-  } else if (signersAfter.length) {
-    throw new Error(`Invalid signing order! The following signers have already signed: ${signersAfter}`);
   }
 
   const signingBuffer = tx.serialize();
