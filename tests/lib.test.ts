@@ -3,6 +3,7 @@ import { describe, expect, it, test } from 'vitest';
 import * as lib from "../src/lib";
 import * as C32 from "c32check";
 import * as StxTx from "@stacks/transactions";
+import { bytesToHex } from '@stacks/common';
 
 test('vitest running', () => {
   expect(true).toBe(true);
@@ -193,7 +194,10 @@ describe('Transaction building', async () => {
     it('Should have correct pubkeys', () => {
       spendingCondition.fields.forEach((f, i) => {
         expect(f.contents.type).toEqual(StxTx.StacksMessageType.PublicKey);
-        const pubkey = f.contents.data.toString('hex');
+        let pubkey = f.contents.data;
+        if (pubkey instanceof Uint8Array) {
+          pubkey = bytesToHex(pubkey);
+        }
         expect(pubkey).toEqual(publicKeys[i]);
       });
     });
@@ -264,7 +268,10 @@ describe('Transaction building', async () => {
       it(`Tx ${i} should have correct pubkeys`, () => {
         spendingCondition.fields.forEach((f, i) => {
           expect(f.contents.type).toEqual(StxTx.StacksMessageType.PublicKey);
-          const pubkey = f.contents.data.toString('hex');
+          let pubkey = f.contents.data;
+          if (pubkey instanceof Uint8Array) {
+            pubkey = bytesToHex(pubkey);
+          }
           expect(pubkey).toEqual(input.publicKeys[i]);
         });
       });
