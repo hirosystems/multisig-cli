@@ -11,7 +11,9 @@ import * as C32 from "c32check";
 import { createTransactionAuthField, TransactionAuthField, StacksTransaction } from "@stacks/transactions";
 import * as StxTx from "@stacks/transactions";
 import { StacksNetworkName } from "@stacks/network";
+import { bytesToHex } from '@stacks/common';
 import * as fs from 'node:fs/promises';
+import * as base64 from 'base64-js';
 
 // This will generate pubkeys using
 //  the format: m/44'/5757'/0'/0/x
@@ -35,12 +37,12 @@ export interface MultisigTxInput {
 
 // Export `StacksTransaction` as base64-encoded string
 export function txEncode(tx: StacksTransaction): string {
-  return tx.serialize().toString('base64');
+  return base64.fromByteArray(tx.serialize());
 }
 
 // Import `StacksTransaction` from base64-encoded string
 export function txDecode(b64: string): StacksTransaction {
-  const tx = StxTx.deserializeTransaction(Buffer.from(b64, 'base64'));
+  const tx = StxTx.deserializeTransaction(base64.toByteArray(b64));
   // This is a workaround because tx deserializes with extra null bytes
   // See https://github.com/hirosystems/stacks.js/issues/1575
   //(tx.payload as any).memo?.content?.replace(/^[\0]*/g, ''); // Trim leading null bytes
@@ -49,13 +51,13 @@ export function txDecode(b64: string): StacksTransaction {
 }
 
 // Export an object as base64-encoded string
-export function b64Encode(data: object): string {
-  return Buffer.from(JSON.stringify(data)).toString('base64');
+export function b64Encode(obj: object): string {
+  return window.btoa(JSON.stringify(obj));
 }
 
 // Import an object from base64-encoded string
-export function b64Decode(serialized: string): object {
-  return JSON.parse(Buffer.from(serialized, 'base64').toString());
+export function b64Decode(b64: string): object {
+  return JSON.parse(window.atob(b64));
 }
 
 // TODO: I don't know if something like this is already in Stacks.js (I couldn't find it), but it should be
@@ -105,7 +107,7 @@ export async function generateMultiSigAddr(app: StxApp, signers: number, require
 }
 
 export function makeMultiSigAddrRaw(pubkeys: string[], required: number): string {
-  const authorizedPKs = pubkeys.slice().map((k) => Buffer.from(k, 'hex'));
+  const authorizedPKs = pubkeys.slice().map(k => Buffer.from(k, 'hex'));
   const redeem = btc.payments.p2ms({ m: required, pubkeys: authorizedPKs });
   const btcAddr = btc.payments.p2sh({ redeem }).address;
   if (!btcAddr) {
@@ -163,7 +165,7 @@ function setMultisigTransactionSpendingConditionFields(tx: StacksTransaction, fi
   if (StxTx.isSingleSig(tx.auth.spendingCondition)) {
     throw new Error(`Multisig transaction cannot be finalized: supplied information initialized a singlesig transaction`);
   }
-  tx.auth.spendingCondition.fields = fields;
+  (tx.auth.spendingCondition as StxTx.MultiSigSpendingCondition).fields = fields;
 }
 
 // Create transactions from file path
@@ -352,6 +354,9 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
     options.network = network;
   }
 
+  // Always use SIP-027 (non-sequential) transactions. No reason to use legacy (sequential) type
+  options.useNonSequentialMultiSig = true;
+
   const unsignedTx = await StxTx.makeUnsignedSTXTokenTransfer(options);
 
   // Set public keys in auth fields
@@ -380,7 +385,7 @@ export function getAuthFieldInfo(tx: StacksTransaction): AuthFieldInfo {
     const type = f.contents.type;
     switch (type) {
     case StxTx.StacksMessageType.PublicKey:
-      pubkeys.push(f.contents.data.toString('hex'));
+      pubkeys.push(bytesToHex(f.contents.data));
       break;
     case StxTx.StacksMessageType.MessageSignature:
       signatures += 1;
@@ -402,7 +407,7 @@ export function getAuthFieldInfo(tx: StacksTransaction): AuthFieldInfo {
 export function getSignersAfter(pubkey: string, authFields: TransactionAuthField[]): number[] | null {
   // Find index of pubkey in auth fields
   const pkIndex = authFields
-    .findIndex(f => f.contents.type === StxTx.StacksMessageType.PublicKey && f.contents.data.toString('hex') === pubkey);
+    .findIndex(f => f.contents.type === StxTx.StacksMessageType.PublicKey && bytesToHex(f.contents.data) === pubkey);
 
   // pubkey isn't in signer set or has already signed
   if (pkIndex < 0) {
@@ -461,7 +466,7 @@ export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: Stacks
   // Match pubkey in auth fields
   const pubkeys = authFields.map(f => {
     if (f.contents.type === StxTx.StacksMessageType.PublicKey) {
-      return f.contents.data.toString('hex');
+      return bytesToHex(f.contents.data);
     } else {
       return null;
     }
@@ -472,16 +477,7 @@ export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: Stacks
     throw new Error(`Pubkey ${pubkey} not found in spending auth fields: ${pubkeys}`);
   }
 
-  // Signing must be done in order of pubkey appearance in authFields
-  // We can't proceed if order is wrong
-  const signersAfter = getSignersAfter(pubkey, authFields);
-  if (!signersAfter) {
-    throw new Error(`Pubkey in auth fields but not found by getSignersAfter(): ${pubkey}`);
-  } else if (signersAfter.length) {
-    throw new Error(`Invalid signing order! The following signers have already signed: ${signersAfter}`);
-  }
-
-  const signingBuffer = tx.serialize();
+  const signingBuffer = Buffer.from(tx.serialize());
   const resp = await app.sign(path, signingBuffer);
 
   if (resp.returnCode !== LedgerError.NoErrors) {
@@ -504,7 +500,7 @@ export async function ledgerSignTx(app: StxApp, path: string, partialFields: Tra
     .map(x => {
       console.log(x);
       if (x.contents.type === StxTx.StacksMessageType.PublicKey) {
-        return x.contents.data.toString('hex');
+        return bytesToHex(x.contents.data);
       } else {
         return null;
       }

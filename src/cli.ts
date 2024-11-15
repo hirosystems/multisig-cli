@@ -1,3 +1,4 @@
+import Transport from "@ledgerhq/hw-transport";
 import TransportNodeHid from "@ledgerhq/hw-transport-node-hid";
 import StxApp from "@zondax/ledger-blockstack";
 import readline from "readline";
@@ -22,12 +23,12 @@ async function readInput(query: string): Promise<string> {
   return answer.trim();
 }
 
-async function getTransport() {
+async function getTransport(): Promise<Transport> {
   //return await SpecTransport.open({ apduPort: 40000 });
   return await TransportNodeHid.create();
 }
 
-async function getStxApp(transport: object): Promise<StxApp> {
+async function getStxApp(transport: Transport): Promise<StxApp> {
   console.log("    *** Please make sure your Ledger is connected, unlocked, and the Stacks App is open ***");
   return await new StxApp(transport);
 }
@@ -36,7 +37,7 @@ async function getStxApp(transport: object): Promise<StxApp> {
 // Subcommands
 //=================
 
-export async function subcommand_get_pub(args: string[], transport: object): Promise<string> {
+export async function subcommand_get_pub(args: string[], transport: Transport): Promise<string> {
   const app = await getStxApp(transport);
   const path = args[0];
   if (!path) {
@@ -60,7 +61,7 @@ export async function subcommand_decode(): Promise<StxTx.StacksTransaction> {
   return tx;
 }
 
-export async function subcommand_make_multi(args: string[], transport: object): Promise<string> {
+export async function subcommand_make_multi(args: string[], transport: Transport): Promise<string> {
   const app = await getStxApp(transport);
   const signers = parseInt(await readInput("Potential signers (number)"));
   const requiredSignatures = parseInt(await readInput("Required signers (number)"));
@@ -145,7 +146,7 @@ export async function subcommand_create_tx(args: string[]): Promise<string[]> {
   return txsEncoded;
 }
 
-export async function subcommand_sign(args: string[], transport: object): Promise<string[]> {
+export async function subcommand_sign(args: string[], transport: Transport): Promise<string[]> {
   // Process args
   const idxJsonTxs = args.indexOf('--json-txs');
   const idxCsvKeys = args.indexOf('--csv-keys');
@@ -277,7 +278,7 @@ export function subcommand_help() {
 //=================
 
 export async function main(args: string[]) {
-  let transport = null;
+  let transport: Transport | null = null;
   const subcommand = args.shift();
 
   switch (subcommand) {

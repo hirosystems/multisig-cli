@@ -2,9 +2,10 @@
   "dependencies": {
     "@ledgerhq/hw-transport-node-hid": "^6.27.21",
     "@ledgerhq/hw-transport-node-speculos": "^6.27.19",
-    "@stacks/transactions": "^4.3.3",
+    "@stacks/transactions": "^6.17.0",
     "@types/papaparse": "^5.3.10",
     "@zondax/ledger-blockstack": "^0.22.5",
+    "base64-js": "^1.5.1",
     "bip39": "^3.0.3",
     "bitcoinjs-lib": "^5.2.0",
     "c32check": "^1.1.2",
