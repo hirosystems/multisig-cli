@@ -45,6 +45,7 @@ npm start -- <subcommand> [args]
    ```sh
    npm start -- get_pub <path>
    ```
+   If you are unsure of what `path` to use to generate the pubkey for your account, try `m/44'/5757'/0/0/0`
 
 2. Create a multisig address from pubkeys
    ```sh
