@@ -36,7 +36,7 @@ npm start -- <subcommand> [args]
 | `--json-txs <path>`   | `sign`, `broadcast`               | Allow bulk operations by reading JSON array from file |
 | `--csv-keys <path>`   | `sign`                            | Sign using pubkeys/paths from a CSV file              |
 | `--out-file <path>`   | `create_tx`, `sign`, `broadcast`  | Output JSON directly to file                          |
-| `--api-key <path>`    | `create_tx`, `broadcast`          | Use Hiro API key to allow for many transactions
+| `--api-key <path>`    | `broadcast`                       | Use Hiro API key to allow for many transactions       |
 
 ## Examples
 
@@ -46,7 +46,7 @@ npm start -- <subcommand> [args]
    ```sh
    npm start -- get_pub <path>
    ```
-   If you are unsure of what `path` to use to generate the pubkey for your account, try `m/44'/5757'/0/0/0`
+   If you are unsure of what `path` to use to generate the pubkey for your account, try `m/5757'/0'/0/0/0` or `m/44'/5757'/0/0/0`
 
 2. Create a multisig address from pubkeys
    ```sh

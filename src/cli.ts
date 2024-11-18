@@ -6,6 +6,7 @@ import { Console } from 'node:console';
 
 import * as fs from 'node:fs';
 import * as fsPromises from 'node:fs/promises';
+import * as StxNet from "@stacks/network";
 import * as StxTx from "@stacks/transactions";
 import * as lib from "./lib";
 
@@ -99,7 +100,6 @@ export async function subcommand_create_tx(args: string[]): Promise<string[]> {
   const idxJsonInputs = args.indexOf('--json-inputs');
   const idxCsvInputs = args.indexOf('--csv-inputs');
   const idxOutFile = args.indexOf('--out-file');
-  const idxApiKey = args.indexOf('--api-key');
 
   // Get inputs
   let inputs: lib.MultisigTxInput[];
@@ -121,12 +121,6 @@ export async function subcommand_create_tx(args: string[]): Promise<string[]> {
     inputs = [
       { sender, recipient, fee, amount, publicKeys, numSignatures, nonce, network }
     ];
-  }
-
-  // Read API key, if exists
-  let apiKey: string | null = null;
-  if (idxApiKey >= 0) {
-    apiKey = await fsPromises.readFile(args[idxApiKey + 1], { encoding: 'utf8' });
   }
 
   // Generate transactions
@@ -249,9 +243,20 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
   }
 
   // Read API key, if exists
-  let apiKey: string | null = null;
+  let networkBuilder = (tx: StxTx.StacksTransaction): StxNet.StacksNetwork | undefined => undefined;
   if (idxApiKey >= 0) {
-    apiKey = await fsPromises.readFile(args[idxApiKey + 1], { encoding: 'utf8' });
+    const apiKey = await fsPromises.readFile(args[idxApiKey + 1], { encoding: 'utf8' });
+    const apiMiddleware = StxNet.createApiKeyMiddleware({ apiKey });
+    const fetchFn = StxNet.createFetchFn(apiMiddleware);
+    const opts: Partial<StxNet.NetworkConfig> = { fetchFn };
+    networkBuilder = (tx: StxTx.StacksTransaction) => {
+      switch (tx.chainId) {
+        case 1:
+          return new StxNet.StacksMainnet(opts);
+        default:
+          return new StxNet.StacksTestnet(opts);
+      }
+    }
   }
 
   // Decode transactions
@@ -269,7 +274,7 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
 
   // Broadcast transactions. Use async so it happens in parallel
   const results = await Promise.all(
-    txs.map(async (tx) => await broadcastFn(tx))
+    txs.map(async (tx) => await broadcastFn(tx, networkBuilder(tx)))
   );
 
   // Output results
