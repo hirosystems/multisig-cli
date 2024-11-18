@@ -12,7 +12,7 @@ import { createTransactionAuthField, TransactionAuthField, StacksTransaction } f
 import * as StxTx from "@stacks/transactions";
 import { StacksNetworkName } from "@stacks/network";
 import { bytesToHex } from '@stacks/common';
-import * as fs from 'node:fs/promises';
+import * as fsPromises from 'node:fs/promises';
 import * as base64 from 'base64-js';
 
 // This will generate pubkeys using
@@ -170,7 +170,7 @@ function setMultisigTransactionSpendingConditionFields(tx: StacksTransaction, fi
 
 // Create transactions from file path
 export async function makeKeyPathMapFromCSVFile(file: string): Promise<Map<string, string>> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeKeyPathMapFromCSVText(data);
 }
 
@@ -206,7 +206,7 @@ export function makeKeyPathMapFromCSVText(text: string): Map<string, string> {
 
 // Create transactions from file path
 export async function makeTxInputsFromCSVFile(file: string): Promise<MultisigTxInput[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeTxInputsFromCSVText(data);
 }
 
@@ -257,7 +257,7 @@ export function makeTxInputsFromCSVText(text: string): MultisigTxInput[] {
 
 // Create transactions from file path
 export async function makeTxInputsFromFile(file: string): Promise<MultisigTxInput[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeTxInputsFromText(data);
 }
 
@@ -424,7 +424,7 @@ export function getSignersAfter(pubkey: string, authFields: TransactionAuthField
 
 // Create transactions from file path
 export async function encodedTxsFromFile(file: string): Promise<string[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return encodedTxsFromText(data);
 }
 

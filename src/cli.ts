@@ -5,6 +5,7 @@ import readline from "readline";
 import { Console } from 'node:console';
 
 import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
 import * as StxTx from "@stacks/transactions";
 import * as lib from "./lib";
 
@@ -98,6 +99,7 @@ export async function subcommand_create_tx(args: string[]): Promise<string[]> {
   const idxJsonInputs = args.indexOf('--json-inputs');
   const idxCsvInputs = args.indexOf('--csv-inputs');
   const idxOutFile = args.indexOf('--out-file');
+  const idxApiKey = args.indexOf('--api-key');
 
   // Get inputs
   let inputs: lib.MultisigTxInput[];
@@ -119,6 +121,12 @@ export async function subcommand_create_tx(args: string[]): Promise<string[]> {
     inputs = [
       { sender, recipient, fee, amount, publicKeys, numSignatures, nonce, network }
     ];
+  }
+
+  // Read API key, if exists
+  let apiKey: string | null = null;
+  if (idxApiKey >= 0) {
+    apiKey = await fsPromises.readFile(args[idxApiKey + 1], { encoding: 'utf8' });
   }
 
   // Generate transactions
@@ -228,6 +236,7 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
   // Parse args
   const idxJsonTxs = args.indexOf('--json-txs');
   const idxOutFile = args.indexOf('--out-file');
+  const idxApiKey = args.indexOf('--api-key');
   const dryRun = args.includes('--dry-run');
 
   // Get transactions
@@ -237,6 +246,12 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
   } else {
     const txEncoded = await readInput("Signed transaction input (base64)");
     txsEncoded = [ txEncoded ];
+  }
+
+  // Read API key, if exists
+  let apiKey: string | null = null;
+  if (idxApiKey >= 0) {
+    apiKey = await fsPromises.readFile(args[idxApiKey + 1], { encoding: 'utf8' });
   }
 
   // Decode transactions
