@@ -449,8 +449,7 @@ export function encodedTxsFromText(str: string): string[] {
 }
 
 export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: StacksTransaction): Promise<StacksTransaction> {
-  const pubkey = (await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig))
-    .publicKey.toString('hex');
+  const pubkey = await getPubKey(app, path);
 
   // Check transaction is correct type
   const spendingCondition = tx.auth.spendingCondition as StxTx.MultiSigSpendingCondition;
@@ -492,8 +491,7 @@ export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: Stacks
 }
 
 export async function ledgerSignTx(app: StxApp, path: string, partialFields: TransactionAuthField[], unsignedTx: Buffer, prevSigHash?: string) {
-  const pubkey = (await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig))
-    .publicKey.toString('hex');
+  const pubkey = await getPubKey(app, path);
 
   const outFields = partialFields.slice();
   const pubkeys = partialFields
