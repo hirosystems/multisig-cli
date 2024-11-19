@@ -198,9 +198,7 @@ describe('Transaction building', async () => {
     it('Should have correct fee, nonce, and hash mode', () => {
       expect(spendingCondition.fee).toEqual(300n);
       expect(spendingCondition.nonce).toEqual(4n);
-      // Accept either legacy or order-independent multisig types
-      let baseHashMode = spendingCondition.hashMode & ~0x04;
-      expect(baseHashMode).toEqual(StxTx.AddressHashMode.SerializeP2SH);
+      expect(spendingCondition.hashMode).toEqual(StxTx.AddressHashMode.SerializeP2SHNonSequential);
     });
   });
 
@@ -233,6 +231,19 @@ describe('Transaction building', async () => {
       { recipient, fee: '777', amount: '100000', publicKeys, numSignatures: 2, network: 'testnet' }, // Should work without `nonce`
       { recipient, fee: '300', amount:  '50000', publicKeys, numSignatures: 1, nonce: '1' }, // Should work without `network`
       { recipient, fee: '777', amount: '100000', publicKeys, numSignatures: 2, sender }, // Should work with `sender`
+      { recipient, fee: '777', amount: '1000000', amount_stx: '1',  publicKeys, numSignatures: 2, nonce: '100'}, // Should work with both `amount` and `amount_stx`
+      { recipient, fee: '777', amount_stx: '1',  publicKeys, numSignatures: 1, nonce: '0'}, // Should work with `amount_stx`
+      { recipient, fee: '777', amount: '100000000000000000', amount_stx: '100000000000', publicKeys, numSignatures: 1, nonce: '0'}, // Should handle big numbers
+    ];
+
+    const amounts: bigint[] = [
+      10000n,
+      100000n,
+      50000n,
+      100000n,
+      2000000n,
+      1000000n,
+      200000000000000000n,
     ];
 
     const txs = await lib.makeStxTokenTransfers(inputs);
@@ -270,15 +281,17 @@ describe('Transaction building', async () => {
       });
 
       it(`Tx ${i} should have correct fee, nonce, and hash mode`, () => {
-        // Accept either legacy or order-independent multisig types
-        let baseHashMode = spendingCondition.hashMode & ~0x04;
-        expect(baseHashMode).toEqual(StxTx.AddressHashMode.SerializeP2SH);
+        expect(spendingCondition.hashMode).toEqual(StxTx.AddressHashMode.SerializeP2SHNonSequential);
         if (input.nonce) {
           expect(spendingCondition.nonce).toEqual(BigInt(input.nonce));
         }
         if (input.fee) {
           expect(spendingCondition.fee).toEqual(BigInt(input.fee));
         }
+      });
+
+      it(`Should add 'amount' and 'amount_stx'`, () => {
+        expect((tx.payload as StxTx.TokenTransferPayload).amount).toStrictEqual(amounts[i]);
       });
     }
   });
