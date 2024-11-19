@@ -10,6 +10,7 @@ import * as btc from "bitcoinjs-lib";
 import * as C32 from "c32check";
 import { createTransactionAuthField, TransactionAuthField, StacksTransaction } from "@stacks/transactions";
 import * as StxTx from "@stacks/transactions";
+import * as StxNet from "@stacks/network";
 import { StacksNetworkName } from "@stacks/network";
 import { bytesToHex } from '@stacks/common';
 import * as fsPromises from 'node:fs/promises';
@@ -71,6 +72,19 @@ export function parseNetworkName(input: string | undefined): StacksNetworkName |
   return undefined;
 }
 
+// Create new `StacksNetwork` for mainnet or testnet, depending on contents of transaction
+export function getStacksNetworkFromTx(tx: StacksTransaction, opts?: Partial<StxNet.NetworkConfig> | undefined): StxNet.StacksNetwork {
+  switch (tx.version) {
+    case StxTx.TransactionVersion.Mainnet:
+      return new StxNet.StacksMainnet(opts);
+    case StxTx.TransactionVersion.Testnet:
+      return new StxNet.StacksTestnet(opts);
+    default:
+      console.log(`Unknown value for \`tx.version\`: ${tx.version}. Assuming testnet`);
+      return new StxNet.StacksTestnet(opts);
+  }
+}
+
 export async function getPubKey(app: StxApp, path: string): Promise<string> {
   const amt = await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig);
   return amt.publicKey.toString('hex');
@@ -125,7 +139,7 @@ export function makeMultiSigAddr(pubkeys: string[], required: number): string {
 // Check that pubkeys match sender address and return in correct order
 export function checkAddressPubKeyMatch(pubkeys: string[], required: number, address: string): string[] {
   // first try in sorted order
-  let authorizedPKs = pubkeys.slice().sort().map((k) => Buffer.from(k, 'hex'));
+  let authorizedPKs = pubkeys.slice().sort().map(k => Buffer.from(k, 'hex'));
   let redeem = btc.payments.p2ms({ m: required, pubkeys: authorizedPKs });
   let btcAddr = btc.payments.p2sh({ redeem }).address;
   if (!btcAddr) {
@@ -137,7 +151,7 @@ export function checkAddressPubKeyMatch(pubkeys: string[], required: number, add
   }
 
   // try in order given
-  authorizedPKs = pubkeys.slice().map((k) => Buffer.from(k, 'hex'));
+  authorizedPKs = pubkeys.slice().map(k => Buffer.from(k, 'hex'));
   redeem = btc.payments.p2ms({ m: required, pubkeys: authorizedPKs });
   btcAddr = btc.payments.p2sh({ redeem }).address;
   if (!btcAddr) {

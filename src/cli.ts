@@ -242,21 +242,17 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
     txsEncoded = [ txEncoded ];
   }
 
-  // Read API key, if exists
+  // Will return `StacksNetwork` if we need custom network config, like when using API key
+  // A value of `undefined` will result in using default network config
   let networkBuilder = (tx: StxTx.StacksTransaction): StxNet.StacksNetwork | undefined => undefined;
+
+  // Read API key, if exists
   if (idxApiKey >= 0) {
     const apiKey = await fsPromises.readFile(args[idxApiKey + 1], { encoding: 'utf8' });
     const apiMiddleware = StxNet.createApiKeyMiddleware({ apiKey });
     const fetchFn = StxNet.createFetchFn(apiMiddleware);
     const opts: Partial<StxNet.NetworkConfig> = { fetchFn };
-    networkBuilder = (tx: StxTx.StacksTransaction) => {
-      switch (tx.chainId) {
-        case 1:
-          return new StxNet.StacksMainnet(opts);
-        default:
-          return new StxNet.StacksTestnet(opts);
-      }
-    }
+    networkBuilder = tx => lib.getStacksNetworkFromTx(tx, opts);
   }
 
   // Decode transactions
