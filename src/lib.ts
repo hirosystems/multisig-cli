@@ -351,12 +351,12 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
   const anchorMode = StxTx.AnchorMode.Any;
 
   // Calculate amount in μSTX
-  let amount = BigInt(0);
+  let amount = 0n;
   if (input.amount) {
     amount += BigInt(input.amount);
   }
   if (input.amount_stx) {
-    amount += BigInt(input.amount_stx) * BigInt(1_000_000);
+    amount += BigInt(input.amount_stx) * 1_000_000n;
   }
 
   // Validate sender address if present
@@ -593,10 +593,10 @@ export async function generateMultiSignedTx(): Promise<StacksTransaction> {
   //console.log(makeMultiSigAddr(pubkeys, 2));
 
   const transaction = await StxTx.makeUnsignedSTXTokenTransfer({
-    fee: BigInt(300),
+    fee: 300n,
     numSignatures: 2,
     publicKeys: pubkeys,
-    amount: BigInt(1000),
+    amount: 1000n,
     recipient: "SP000000000000000000002Q6VF78",
     anchorMode: StxTx.AnchorMode.Any,
   });
@@ -621,10 +621,10 @@ export async function generateMultiUnsignedTx() {
   console.log(makeMultiSigAddr(pubkeys, 2));
 
   const unsignedTx = await StxTx.makeUnsignedSTXTokenTransfer({
-    fee: BigInt(300),
+    fee: 300n,
     numSignatures: 2,
     publicKeys: pubkeys,
-    amount: BigInt(1000),
+    amount: 1000n,
     recipient: "SP000000000000000000002Q6VF78",
     anchorMode: StxTx.AnchorMode.Any,
   });
