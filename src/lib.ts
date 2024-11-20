@@ -102,6 +102,29 @@ export async function getPubKeyMultisigStandardIndex(app: StxApp, index: number)
   return { pubkey: await getPubKey(app, path), path };
 }
 
+// Wrapper around any cached objects
+export const cache = {
+  nonces: new Map<string, bigint>,
+
+  // Avoid duplicating `getNonce()` calls to the network, which will give incorrect results if generating multiple txs from a single address
+  async getNonce(addr: string): Promise<bigint> {
+    let nonce;
+    const cachedNonce = this.nonces.get(addr);
+    if (cachedNonce === undefined) {
+      nonce = await StxTx.getNonce(addr);
+    } else {
+      nonce = cachedNonce + 1n;
+    }
+    this.nonces.set(addr, nonce)
+    return nonce;
+  },
+
+  // Clear `this`
+  clear() {
+    this.nonces.clear()
+  }
+};
+
 export async function generateMultiSigAddr(app: StxApp, signers: number, requiredSignatures: number) {
   // Get pubkey/path pairs from device
   const keypaths = [];
@@ -373,7 +396,7 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
   } else {
     // Shouldn't Stacks.js automatically set nonce if not given?
     const addr = makeMultiSigAddr(publicKeys, numSignatures);
-    options.nonce = await StxTx.getNonce(addr);
+    options.nonce = await cache.getNonce(addr);
   }
 
   if (input.fee) {
