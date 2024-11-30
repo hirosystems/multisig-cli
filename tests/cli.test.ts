@@ -15,7 +15,7 @@ describe('Bulk transfer generation', async () => {
   ]);
 
   describe('From JSON file', async () => {
-    it(`Should return an array of 4 transactions`, () => {
+    it(`Should return an array of 5 transactions`, () => {
       expect(outputFromJson).toHaveLength(4);
     });
 

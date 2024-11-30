@@ -5,6 +5,8 @@ import readline from "readline";
 import { Console } from 'node:console';
 
 import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
+import * as StxNet from "@stacks/network";
 import * as StxTx from "@stacks/transactions";
 import * as lib from "./lib";
 
@@ -170,7 +172,7 @@ export async function subcommand_sign(args: string[], transport: Transport): Pro
 
   // Read key/path mappings if given
   let keyPaths = new Map<string, string>;
-  if (idxJsonTxs >= 0) {
+  if (idxCsvKeys >= 0) {
     keyPaths = await lib.makeKeyPathMapFromCSVFile(args[idxCsvKeys + 1]);
   }
 
@@ -182,7 +184,12 @@ export async function subcommand_sign(args: string[], transport: Transport): Pro
       if (sigs >= info.signaturesRequired) break;
       const hdPath = keyPaths.get(pk) ?? await readInput(`HD derivation path for ${pk} (empty to skip for this key)`);
       if (!hdPath) continue;
-      console.log(`Expecting ${hdPath}=>${pk}...`);
+      const pkFromDevice = await lib.getPubKey(app, hdPath);
+      if (pk !== pkFromDevice) {
+        console.log(`${hdPath} does not corresponsd to pubkey ${pk} (got ${pkFromDevice}). Skipping...`);
+        continue;
+      }
+      console.log(`Using ${hdPath}=>${pk}...`);
       console.log("    *** Please check and approve signing on Ledger ***");
       tx = await lib.ledgerSignMultisigTx(app, hdPath, tx);
       sigs += 1;
@@ -223,6 +230,7 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
   // Parse args
   const idxJsonTxs = args.indexOf('--json-txs');
   const idxOutFile = args.indexOf('--out-file');
+  const idxApiKey = args.indexOf('--api-key');
   const dryRun = args.includes('--dry-run');
 
   // Get transactions
@@ -232,6 +240,19 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
   } else {
     const txEncoded = await readInput("Signed transaction input (base64)");
     txsEncoded = [ txEncoded ];
+  }
+
+  // Will return `StacksNetwork` if we need custom network config, like when using API key
+  // A value of `undefined` will result in using default network config
+  let networkBuilder = (tx: StxTx.StacksTransaction): StxNet.StacksNetwork | undefined => undefined;
+
+  // Read API key, if exists
+  if (idxApiKey >= 0) {
+    const apiKey = await fsPromises.readFile(args[idxApiKey + 1], { encoding: 'utf8' });
+    const apiMiddleware = StxNet.createApiKeyMiddleware({ apiKey });
+    const fetchFn = StxNet.createFetchFn(apiMiddleware);
+    const opts: Partial<StxNet.NetworkConfig> = { fetchFn };
+    networkBuilder = tx => lib.getStacksNetworkFromTx(tx, opts);
   }
 
   // Decode transactions
@@ -249,7 +270,7 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
 
   // Broadcast transactions. Use async so it happens in parallel
   const results = await Promise.all(
-    txs.map(async (tx) => await broadcastFn(tx))
+    txs.map(async (tx) => await broadcastFn(tx, networkBuilder(tx)))
   );
 
   // Output results
