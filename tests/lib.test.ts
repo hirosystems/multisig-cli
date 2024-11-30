@@ -14,13 +14,6 @@ test('StacksTransaction serialize/deserialize', async () => {
   const tx_encoded = tx.serialize();
   const tx_decoded = StxTx.deserializeTransaction(tx_encoded);
 
-  // FIXME: When transaction is deserialized, there are a bunch of null bytes in `memo.content`:
-  //   content: '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-  // It should be:
-  //   content: ''
-  delete tx.payload['memo'].content;
-  delete tx_decoded.payload['memo'].content;
-
   expect(tx_decoded).toEqual(tx);
 
   // Check object methods
@@ -106,6 +99,22 @@ test('Get auth field info', async () => {
     signatures: 2,
     signaturesRequired: 2,
   });
+});
+
+test('Nonce caching', async () => {
+  // Must use an address here not used in other unit tests, so we know we have empty cache
+  const addr = "SP2P5AC6RZ0NJWXRE15RSCDSA3T3A2R4QCRW3T5RX";
+
+  // Should be no caching in `StxTx.getNonce()`
+  const initialNonce = await StxTx.getNonce(addr);
+  const initialNonceAgain = await StxTx.getNonce(addr);
+  expect(initialNonce).toStrictEqual(initialNonceAgain);
+
+  // Sucessive calls to `getNonceCached()` should return incrementing nonces
+  for (let i=0n; i < 10n; i++) {
+    const nonce = await lib.cache.getNonce(addr);
+    expect(nonce).toStrictEqual(initialNonce + i);
+  }
 });
 
 describe('Parse key/path map CSV file', async () => {
@@ -205,9 +214,7 @@ describe('Transaction building', async () => {
     it('Should have correct fee, nonce, and hash mode', () => {
       expect(spendingCondition.fee).toEqual(300n);
       expect(spendingCondition.nonce).toEqual(4n);
-      // Accept either legacy or order-independent multisig types
-      let baseHashMode = spendingCondition.hashMode & ~0x04;
-      expect(baseHashMode).toEqual(StxTx.AddressHashMode.SerializeP2SH);
+      expect(spendingCondition.hashMode).toEqual(StxTx.AddressHashMode.SerializeP2SHNonSequential);
     });
   });
 
@@ -240,6 +247,19 @@ describe('Transaction building', async () => {
       { recipient, fee: '777', amount: '100000', publicKeys, numSignatures: 2, network: 'testnet' }, // Should work without `nonce`
       { recipient, fee: '300', amount:  '50000', publicKeys, numSignatures: 1, nonce: '1' }, // Should work without `network`
       { recipient, fee: '777', amount: '100000', publicKeys, numSignatures: 2, sender }, // Should work with `sender`
+      { recipient, fee: '777', amount: '1000000', amount_stx: '1',  publicKeys, numSignatures: 2, nonce: '100'}, // Should work with both `amount` and `amount_stx`
+      { recipient, fee: '777', amount_stx: '1',  publicKeys, numSignatures: 1, nonce: '0'}, // Should work with `amount_stx`
+      { recipient, fee: '777', amount: '100000000000000000000', amount_stx: '100000000000000', publicKeys, numSignatures: 1, nonce: '0'}, // Should handle big numbers
+    ];
+
+    const amounts: bigint[] = [
+      10000n,
+      100000n,
+      50000n,
+      100000n,
+      2000000n,
+      1000000n,
+      200000000000000000000n,
     ];
 
     const txs = await lib.makeStxTokenTransfers(inputs);
@@ -277,15 +297,17 @@ describe('Transaction building', async () => {
       });
 
       it(`Tx ${i} should have correct fee, nonce, and hash mode`, () => {
-        // Accept either legacy or order-independent multisig types
-        let baseHashMode = spendingCondition.hashMode & ~0x04;
-        expect(baseHashMode).toEqual(StxTx.AddressHashMode.SerializeP2SH);
+        expect(spendingCondition.hashMode).toEqual(StxTx.AddressHashMode.SerializeP2SHNonSequential);
         if (input.nonce) {
           expect(spendingCondition.nonce).toEqual(BigInt(input.nonce));
         }
         if (input.fee) {
           expect(spendingCondition.fee).toEqual(BigInt(input.fee));
         }
+      });
+
+      it(`Should add 'amount' and 'amount_stx'`, () => {
+        expect((tx.payload as StxTx.TokenTransferPayload).amount).toStrictEqual(amounts[i]);
       });
     }
   });

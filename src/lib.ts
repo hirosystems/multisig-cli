@@ -10,9 +10,10 @@ import * as btc from "bitcoinjs-lib";
 import * as C32 from "c32check";
 import { createTransactionAuthField, TransactionAuthField, StacksTransaction } from "@stacks/transactions";
 import * as StxTx from "@stacks/transactions";
+import * as StxNet from "@stacks/network";
 import { StacksNetworkName } from "@stacks/network";
 import { bytesToHex } from '@stacks/common';
-import * as fs from 'node:fs/promises';
+import * as fsPromises from 'node:fs/promises';
 import * as base64 from 'base64-js';
 
 // This will generate pubkeys using
@@ -27,7 +28,9 @@ export interface MultisigTxInput {
   sender?: string  // Optional. Can be used to check address generation from pubkeys
   recipient: string
   fee?: string
-  amount: string
+  // If both `amount` and `amount_stx` are present, they are added together
+  amount?: string // Amount in uSTX
+  amount_stx?: string // Amount in STX
   publicKeys: string[]
   numSignatures: number
   nonce?: string
@@ -71,6 +74,19 @@ export function parseNetworkName(input: string | undefined): StacksNetworkName |
   return undefined;
 }
 
+// Create new `StacksNetwork` for mainnet or testnet, depending on contents of transaction
+export function getStacksNetworkFromTx(tx: StacksTransaction, opts?: Partial<StxNet.NetworkConfig> | undefined): StxNet.StacksNetwork {
+  switch (tx.version) {
+    case StxTx.TransactionVersion.Mainnet:
+      return new StxNet.StacksMainnet(opts);
+    case StxTx.TransactionVersion.Testnet:
+      return new StxNet.StacksTestnet(opts);
+    default:
+      console.log(`Unknown value for \`tx.version\`: ${tx.version}. Assuming testnet`);
+      return new StxNet.StacksTestnet(opts);
+  }
+}
+
 export async function getPubKey(app: StxApp, path: string): Promise<string> {
   const amt = await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig);
   return amt.publicKey.toString('hex');
@@ -85,6 +101,29 @@ export async function getPubKeyMultisigStandardIndex(app: StxApp, index: number)
   const path = `${BTC_MULTISIG_SCRIPT_PATH}/0/${index}`;
   return { pubkey: await getPubKey(app, path), path };
 }
+
+// Wrapper around any cached objects
+export const cache = {
+  nonces: new Map<string, bigint>,
+
+  // Avoid duplicating `getNonce()` calls to the network, which will give incorrect results if generating multiple txs from a single address
+  async getNonce(addr: string): Promise<bigint> {
+    let nonce;
+    const cachedNonce = this.nonces.get(addr);
+    if (cachedNonce === undefined) {
+      nonce = await StxTx.getNonce(addr);
+    } else {
+      nonce = cachedNonce + 1n;
+    }
+    this.nonces.set(addr, nonce)
+    return nonce;
+  },
+
+  // Clear `this`
+  clear() {
+    this.nonces.clear()
+  }
+};
 
 export async function generateMultiSigAddr(app: StxApp, signers: number, requiredSignatures: number) {
   // Get pubkey/path pairs from device
@@ -125,7 +164,7 @@ export function makeMultiSigAddr(pubkeys: string[], required: number): string {
 // Check that pubkeys match sender address and return in correct order
 export function checkAddressPubKeyMatch(pubkeys: string[], required: number, address: string): string[] {
   // first try in sorted order
-  let authorizedPKs = pubkeys.slice().sort().map((k) => Buffer.from(k, 'hex'));
+  let authorizedPKs = pubkeys.slice().sort().map(k => Buffer.from(k, 'hex'));
   let redeem = btc.payments.p2ms({ m: required, pubkeys: authorizedPKs });
   let btcAddr = btc.payments.p2sh({ redeem }).address;
   if (!btcAddr) {
@@ -137,7 +176,7 @@ export function checkAddressPubKeyMatch(pubkeys: string[], required: number, add
   }
 
   // try in order given
-  authorizedPKs = pubkeys.slice().map((k) => Buffer.from(k, 'hex'));
+  authorizedPKs = pubkeys.slice().map(k => Buffer.from(k, 'hex'));
   redeem = btc.payments.p2ms({ m: required, pubkeys: authorizedPKs });
   btcAddr = btc.payments.p2sh({ redeem }).address;
   if (!btcAddr) {
@@ -170,7 +209,7 @@ function setMultisigTransactionSpendingConditionFields(tx: StacksTransaction, fi
 
 // Create transactions from file path
 export async function makeKeyPathMapFromCSVFile(file: string): Promise<Map<string, string>> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeKeyPathMapFromCSVText(data);
 }
 
@@ -206,7 +245,7 @@ export function makeKeyPathMapFromCSVText(text: string): Map<string, string> {
 
 // Create transactions from file path
 export async function makeTxInputsFromCSVFile(file: string): Promise<MultisigTxInput[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeTxInputsFromCSVText(data);
 }
 
@@ -252,12 +291,12 @@ export function makeTxInputsFromCSVText(text: string): MultisigTxInput[] {
   });
   //console.dir(data, {depth: null, colors: true});
 
-  return validateTxInputs(data as MultisigTxInput[]);
+  return validateTxInputs(data as object[]);
 }
 
 // Create transactions from file path
 export async function makeTxInputsFromFile(file: string): Promise<MultisigTxInput[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeTxInputsFromText(data);
 }
 
@@ -283,8 +322,15 @@ export function validateTxInputs(data: object[]): MultisigTxInput[] {
     if (typeof input.recipient !== 'string') {
       throw Error(`${errorPrefix}: Property 'recipient' of element ${i} not valid: ${input.recipient}'`);
     }
-    if (typeof input.amount !== 'string') {
+    if (input.amount && typeof input.amount !== 'string') {
       throw Error(`${errorPrefix}: Property 'amount' of element ${i} not valid: ${input.amount}'`);
+    }
+    if (input.amount_stx && typeof input.amount_stx !== 'string') {
+      throw Error(`${errorPrefix}: Property 'amount_stx' of element ${i} not valid: ${input.amount_stx}'`);
+    }
+    // Must contain at least one, can contain both
+    if (!input.amount && !input.amount_stx) {
+      throw Error(`${errorPrefix}: Property 'amount' and/or 'amount_stx' must be defined'`);
     }
     if (!Array.isArray(input.publicKeys)) {
       throw Error(`${errorPrefix}: Property 'publicKeys' of element ${i} not valid: ${input.publicKeys}'`);
@@ -325,8 +371,16 @@ export async function makeStxTokenTransfers(inputs: MultisigTxInput[]): Promise<
 export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<StacksTransaction> {
   let { publicKeys } = input;
   const { sender, recipient, numSignatures, memo } = input;
-  const amount = BigInt(input.amount);
   const anchorMode = StxTx.AnchorMode.Any;
+
+  // Calculate amount in μSTX
+  let amount = 0n;
+  if (input.amount) {
+    amount += BigInt(input.amount);
+  }
+  if (input.amount_stx) {
+    amount += BigInt(input.amount_stx) * 1_000_000n;
+  }
 
   // Validate sender address if present
   // This may re-order publicKeys to match address
@@ -342,7 +396,7 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
   } else {
     // Shouldn't Stacks.js automatically set nonce if not given?
     const addr = makeMultiSigAddr(publicKeys, numSignatures);
-    options.nonce = await StxTx.getNonce(addr);
+    options.nonce = await cache.getNonce(addr);
   }
 
   if (input.fee) {
@@ -424,7 +478,7 @@ export function getSignersAfter(pubkey: string, authFields: TransactionAuthField
 
 // Create transactions from file path
 export async function encodedTxsFromFile(file: string): Promise<string[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return encodedTxsFromText(data);
 }
 
@@ -449,8 +503,7 @@ export function encodedTxsFromText(str: string): string[] {
 }
 
 export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: StacksTransaction): Promise<StacksTransaction> {
-  const pubkey = (await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig))
-    .publicKey.toString('hex');
+  const pubkey = await getPubKey(app, path);
 
   // Check transaction is correct type
   const spendingCondition = tx.auth.spendingCondition as StxTx.MultiSigSpendingCondition;
@@ -492,8 +545,7 @@ export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: Stacks
 }
 
 export async function ledgerSignTx(app: StxApp, path: string, partialFields: TransactionAuthField[], unsignedTx: Buffer, prevSigHash?: string) {
-  const pubkey = (await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig))
-    .publicKey.toString('hex');
+  const pubkey = await getPubKey(app, path);
 
   const outFields = partialFields.slice();
   const pubkeys = partialFields
@@ -564,10 +616,10 @@ export async function generateMultiSignedTx(): Promise<StacksTransaction> {
   //console.log(makeMultiSigAddr(pubkeys, 2));
 
   const transaction = await StxTx.makeUnsignedSTXTokenTransfer({
-    fee: BigInt(300),
+    fee: 300n,
     numSignatures: 2,
     publicKeys: pubkeys,
-    amount: BigInt(1000),
+    amount: 1000n,
     recipient: "SP000000000000000000002Q6VF78",
     anchorMode: StxTx.AnchorMode.Any,
   });
@@ -592,10 +644,10 @@ export async function generateMultiUnsignedTx() {
   console.log(makeMultiSigAddr(pubkeys, 2));
 
   const unsignedTx = await StxTx.makeUnsignedSTXTokenTransfer({
-    fee: BigInt(300),
+    fee: 300n,
     numSignatures: 2,
     publicKeys: pubkeys,
-    amount: BigInt(1000),
+    amount: 1000n,
     recipient: "SP000000000000000000002Q6VF78",
     anchorMode: StxTx.AnchorMode.Any,
   });
