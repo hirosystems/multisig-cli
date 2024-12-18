@@ -170,7 +170,7 @@ export async function subcommand_sign(args: string[], transport: Transport): Pro
 
   // Read key/path mappings if given
   let keyPaths = new Map<string, string>;
-  if (idxJsonTxs >= 0) {
+  if (idxCsvKeys >= 0) {
     keyPaths = await lib.makeKeyPathMapFromCSVFile(args[idxCsvKeys + 1]);
   }
 
@@ -182,7 +182,12 @@ export async function subcommand_sign(args: string[], transport: Transport): Pro
       if (sigs >= info.signaturesRequired) break;
       const hdPath = keyPaths.get(pk) ?? await readInput(`HD derivation path for ${pk} (empty to skip for this key)`);
       if (!hdPath) continue;
-      console.log(`Expecting ${hdPath}=>${pk}...`);
+      const pkFromDevice = await lib.getPubKey(app, hdPath);
+      if (pk !== pkFromDevice) {
+        console.log(`${hdPath} does not corresponsd to pubkey ${pk} (got ${pkFromDevice}). Skipping...`);
+        continue;
+      }
+      console.log(`Using ${hdPath}=>${pk}...`);
       console.log("    *** Please check and approve signing on Ledger ***");
       tx = await lib.ledgerSignMultisigTx(app, hdPath, tx);
       sigs += 1;
