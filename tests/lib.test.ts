@@ -101,6 +101,22 @@ test('Get auth field info', async () => {
   });
 });
 
+test('Nonce caching', async () => {
+  // Must use an address here not used in other unit tests, so we know we have empty cache
+  const addr = "SP2P5AC6RZ0NJWXRE15RSCDSA3T3A2R4QCRW3T5RX";
+
+  // Should be no caching in `StxTx.getNonce()`
+  const initialNonce = await StxTx.getNonce(addr);
+  const initialNonceAgain = await StxTx.getNonce(addr);
+  expect(initialNonce).toStrictEqual(initialNonceAgain);
+
+  // Sucessive calls to `getNonceCached()` should return incrementing nonces
+  for (let i=0n; i < 10n; i++) {
+    const nonce = await lib.cache.getNonce(addr);
+    expect(nonce).toStrictEqual(initialNonce + i);
+  }
+});
+
 describe('Parse key/path map CSV file', async () => {
   const keyPaths = await lib.makeKeyPathMapFromCSVFile('./tests/fixtures/key_path_map.csv');
 

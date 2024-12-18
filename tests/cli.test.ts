@@ -1,7 +1,7 @@
 import { describe, expect, it, test } from 'vitest';
 
 import * as cli from "../src/cli";
-//import * as StxTx from "@stacks/transactions";
+import * as lib from "../src/lib";
 
 describe('Bulk transfer generation', async () => {
   const outputFromCsv = await cli.subcommand_create_tx([
@@ -9,13 +9,16 @@ describe('Bulk transfer generation', async () => {
     './tests/fixtures/transaction_inputs.json'
   ]);
 
+  // Clear cache so nonce values will match
+  lib.cache.clear();
+
   const outputFromJson = await cli.subcommand_create_tx([
     '--csv-inputs',
     './tests/fixtures/transaction_inputs.csv'
   ]);
 
   describe('From JSON file', async () => {
-    it(`Should return an array of 5 transactions`, () => {
+    it(`Should return an array of 4 transactions`, () => {
       expect(outputFromJson).toHaveLength(4);
     });
 
