@@ -28,7 +28,9 @@ export interface MultisigTxInput {
   sender?: string  // Optional. Can be used to check address generation from pubkeys
   recipient: string
   fee?: string
-  amount: string
+  // If both `amount` and `amount_stx` are present, they are added together
+  amount?: string // Amount in uSTX
+  amount_stx?: string // Amount in STX
   publicKeys: string[]
   numSignatures: number
   nonce?: string
@@ -266,7 +268,7 @@ export function makeTxInputsFromCSVText(text: string): MultisigTxInput[] {
   });
   //console.dir(data, {depth: null, colors: true});
 
-  return validateTxInputs(data as MultisigTxInput[]);
+  return validateTxInputs(data as object[]);
 }
 
 // Create transactions from file path
@@ -297,8 +299,15 @@ export function validateTxInputs(data: object[]): MultisigTxInput[] {
     if (typeof input.recipient !== 'string') {
       throw Error(`${errorPrefix}: Property 'recipient' of element ${i} not valid: ${input.recipient}'`);
     }
-    if (typeof input.amount !== 'string') {
+    if (input.amount && typeof input.amount !== 'string') {
       throw Error(`${errorPrefix}: Property 'amount' of element ${i} not valid: ${input.amount}'`);
+    }
+    if (input.amount_stx && typeof input.amount_stx !== 'string') {
+      throw Error(`${errorPrefix}: Property 'amount_stx' of element ${i} not valid: ${input.amount_stx}'`);
+    }
+    // Must contain at least one, can contain both
+    if (!input.amount && !input.amount_stx) {
+      throw Error(`${errorPrefix}: Property 'amount' and/or 'amount_stx' must be defined'`);
     }
     if (!Array.isArray(input.publicKeys)) {
       throw Error(`${errorPrefix}: Property 'publicKeys' of element ${i} not valid: ${input.publicKeys}'`);
@@ -339,8 +348,16 @@ export async function makeStxTokenTransfers(inputs: MultisigTxInput[]): Promise<
 export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<StacksTransaction> {
   let { publicKeys } = input;
   const { sender, recipient, numSignatures, memo } = input;
-  const amount = BigInt(input.amount);
   const anchorMode = StxTx.AnchorMode.Any;
+
+  // Calculate amount in μSTX
+  let amount = 0n;
+  if (input.amount) {
+    amount += BigInt(input.amount);
+  }
+  if (input.amount_stx) {
+    amount += BigInt(input.amount_stx) * 1_000_000n;
+  }
 
   // Validate sender address if present
   // This may re-order publicKeys to match address
@@ -576,10 +593,10 @@ export async function generateMultiSignedTx(): Promise<StacksTransaction> {
   //console.log(makeMultiSigAddr(pubkeys, 2));
 
   const transaction = await StxTx.makeUnsignedSTXTokenTransfer({
-    fee: BigInt(300),
+    fee: 300n,
     numSignatures: 2,
     publicKeys: pubkeys,
-    amount: BigInt(1000),
+    amount: 1000n,
     recipient: "SP000000000000000000002Q6VF78",
     anchorMode: StxTx.AnchorMode.Any,
   });
@@ -604,10 +621,10 @@ export async function generateMultiUnsignedTx() {
   console.log(makeMultiSigAddr(pubkeys, 2));
 
   const unsignedTx = await StxTx.makeUnsignedSTXTokenTransfer({
-    fee: BigInt(300),
+    fee: 300n,
     numSignatures: 2,
     publicKeys: pubkeys,
-    amount: BigInt(1000),
+    amount: 1000n,
     recipient: "SP000000000000000000002Q6VF78",
     anchorMode: StxTx.AnchorMode.Any,
   });
