@@ -48,9 +48,6 @@ To avoid rate limits when creating transactions or broadcasting them, you can us
 2. Save your API key to a file
 3. Use the `--api-key` flag with the relevant commands:
    ```sh
-   # When creating transactions (helps with nonce fetching)
-   npm start -- create_tx --api-key path/to/api-key-file
-
    # When broadcasting transactions
    npm start -- broadcast --api-key path/to/api-key-file
    ```
