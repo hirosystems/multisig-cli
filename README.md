@@ -36,9 +36,26 @@ npm start -- <subcommand> [args]
 | `--json-txs <path>`   | `sign`, `broadcast`               | Allow bulk operations by reading JSON array from file |
 | `--csv-keys <path>`   | `sign`                            | Sign using pubkeys/paths from a CSV file              |
 | `--out-file <path>`   | `create_tx`, `sign`, `broadcast`  | Output JSON directly to file                          |
-| `--api-key <path>`    | `broadcast`                       | Use Hiro API key to allow for many transactions       |
+| `--api-key <path>`    | `create_tx`, `broadcast`          | Use Hiro API key to avoid rate limits                |
 
 ## Examples
+
+### Using Hiro API Key
+
+To avoid rate limits when creating transactions or broadcasting them, you can use a Hiro API key:
+
+1. Get an API key from [Hiro](https://docs.hiro.so/api)
+2. Save your API key to a file
+3. Use the `--api-key` flag with the relevant commands:
+   ```sh
+   # When creating transactions (helps with nonce fetching)
+   npm start -- create_tx --api-key path/to/api-key-file
+
+   # When broadcasting transactions
+   npm start -- broadcast --api-key path/to/api-key-file
+   ```
+
+This is especially useful when working with multiple transactions to avoid hitting rate limits.
 
 ### Recieving Funds
 
@@ -97,6 +114,28 @@ You will need to copy/paste this between steps to manage application state.
    npm start -- broadcast --json-txs signed_transactions.json --out-file broadcast_results.json
    ```
 
+### CSV File Structure
+
+The Transactions CSV file should have the following columns:
+
+| Column Name | Description |
+| --- | --- |
+| `recipient` | Destination STX Address |
+| `fee` | Transaction Fee (in microSTX) |
+| `amount` | Amount to Send (in microSTX) |
+| `publicKeys/0` | Public Key 1 (add for each signer)|
+| `publicKeys/1` | Public Key 2 |
+| `publicKeys/2` | Public Key 3 |
+| `numSignatures` | Number of Signatures Needed |
+| `sender` | Source STX Address|
+
+The Key Path Map CSV file should have the following columns with the public key for each signer for each path 
+
+| Column Name | Description |
+| --- | --- |
+| `key` | Derivation Path |
+| `path` | Public Key for that Path a Given Signer |
+
 ## Using Docker
 
 You will need Docker and `just` (can be installed by `cargo install just`)
@@ -113,4 +152,3 @@ Run the same way you would run normally, but replace the `npm start --` prefix w
 
 ```sh
 just run [args...]
-```
