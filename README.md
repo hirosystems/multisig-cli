@@ -36,7 +36,7 @@ npm start -- <subcommand> [args]
 | `--json-txs <path>`   | `sign`, `broadcast`               | Allow bulk operations by reading JSON array from file |
 | `--csv-keys <path>`   | `sign`                            | Sign using pubkeys/paths from a CSV file              |
 | `--out-file <path>`   | `create_tx`, `sign`, `broadcast`  | Output JSON directly to file                          |
-| `--api-key <path>`    | `create_tx`, `broadcast`          | Use Hiro API key to avoid rate limits                |
+| `--api-key <path>`    | `broadcast`                       | Use Hiro API key to avoid rate limits                 |
 
 ## Examples
 
