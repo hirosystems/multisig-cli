@@ -95,6 +95,41 @@ export async function subcommand_check_multi(): Promise<string> {
   return c32;
 }
 
+export async function subcommand_create_sip31_claim(args: string[]): Promise<string> {
+  const idxOutFile = args.indexOf('--out-file');
+  const sender = await readInput("From Address (C32)");
+  const publicKeys = (await readInput("From public keys (comma separate)")).split(',').map(x => x.trim());
+  const numSignatures = parseInt(await readInput("Required signers (number)"));
+  const fee = await readInput("microSTX fee (optional)");
+  const nonce = await readInput("Nonce (optional)");
+  const network = await readInput("Network (optional) [testnet/mainnet]");
+
+  const inputs =
+    { sender, fee, publicKeys, numSignatures, nonce, network };
+  const tx = await lib.makeSip31claim(inputs);
+  const txEncoded = lib.txEncode(tx);
+
+  // Output transaction. Show extra headers and colors if we are not outputting to pipe or file
+  let outStream = console;
+  let outIsTerm = process.stdout.isTTY;
+
+  if (idxOutFile >= 0) {
+    const fileName = args[idxOutFile + 1];
+    const stdout = fs.createWriteStream(fileName);
+    const stderr = fs.createWriteStream(`${fileName}.err`);
+    outStream = new Console({ stdout, stderr });
+    outIsTerm = false;
+  }
+  if (outIsTerm) {
+    outStream.log(`Unsigned multisig transaction`);
+    outStream.log(`--------------------------------`);
+  }
+  outStream.log(JSON.stringify([txEncoded], null, 2));
+
+  // return value for unit testing
+  return txEncoded;
+}
+
 export async function subcommand_create_tx(args: string[]): Promise<string[]> {
   // Process args
   const idxJsonInputs = args.indexOf('--json-inputs');
@@ -316,6 +351,9 @@ export async function main(args: string[]) {
     break;
   case 'check_multi':
     await subcommand_check_multi();
+    break;
+  case 'create_sip31_claim':
+    await subcommand_create_sip31_claim(args);
     break;
   case 'create_tx':
     await subcommand_create_tx(args);
