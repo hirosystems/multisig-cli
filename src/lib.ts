@@ -38,6 +38,15 @@ export interface MultisigTxInput {
   memo?: string
 }
 
+export interface MultisigClaimTxInput {
+  sender?: string  // Optional. Can be used to check address generation from pubkeys
+  fee?: string
+  publicKeys: string[]
+  numSignatures: number
+  nonce?: string
+  network?: string
+}
+
 // Export `StacksTransaction` as base64-encoded string
 export function txEncode(tx: StacksTransaction): string {
   return base64.fromByteArray(tx.serialize());
@@ -412,6 +421,62 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
   options.useNonSequentialMultiSig = true;
 
   const unsignedTx = await StxTx.makeUnsignedSTXTokenTransfer(options);
+
+  // Set public keys in auth fields
+  // TODO: Is this necessary to set auth fields or already done by `makeUnsignedSTXTokenTransfer()`
+  const authFields = makeSpendingConditionFields(publicKeys);
+  setMultisigTransactionSpendingConditionFields(unsignedTx, authFields);
+
+  return unsignedTx;
+}
+
+/// Builds an unsigned transfer out of a multisig data serialization
+export async function makeSip31claim(input: MultisigClaimTxInput): Promise<StacksTransaction> {
+  let { publicKeys } = input;
+  const { sender, numSignatures } = input;
+  const anchorMode = StxTx.AnchorMode.Any;
+
+  // Validate sender address if present
+  // This may re-order publicKeys to match address
+  if (sender) {
+    publicKeys = checkAddressPubKeyMatch(publicKeys, numSignatures, sender);
+  }
+
+  const options: StxTx.UnsignedMultiSigContractCallOptions = {
+    anchorMode, numSignatures, publicKeys,
+    functionName: "claim",
+    functionArgs: [],
+    contractAddress: "SP000000000000000000002Q6VF78",
+    contractName: "sip-031",
+  };
+
+  // Conditional fields
+  if (input.nonce) {
+    options.nonce = BigInt(input.nonce);
+  } else {
+    const addr = makeMultiSigAddr(publicKeys, numSignatures);
+    options.nonce = await cache.getNonce(addr);
+  }
+
+  if (input.fee) {
+    options.fee = BigInt(input.fee);
+  }
+
+  const network = parseNetworkName(input.network);
+  if (network) {
+    options.network = network;
+  }
+
+  // Always use SIP-027 (non-sequential) transactions. No reason to use legacy (sequential) type
+  options.useNonSequentialMultiSig = true;
+  // NOTE: this sets the post condition mode of this transaction to ALLOW.
+  // this is dangerous for most contract-calls, however, for SIP-31 claims, the SIP-31
+  // contract is trusted to make an appropriate transfer (and nothing else!)
+  // If you update this code to call other contracts, using ALLOW mode on the post-conditions
+  // is unsafe!
+  options.postConditionMode = StxTx.PostConditionMode.Allow;
+
+  const unsignedTx = await StxTx.makeUnsignedContractCall(options);
 
   // Set public keys in auth fields
   // TODO: Is this necessary to set auth fields or already done by `makeUnsignedSTXTokenTransfer()`
