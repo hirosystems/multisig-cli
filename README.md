@@ -38,8 +38,23 @@ npm start -- <subcommand> [args]
 | `--json-txs <path>`   | `sign`, `broadcast`                                 | Allow bulk operations by reading JSON array from file |
 | `--csv-keys <path>`   | `sign`                                              | Sign using pubkeys/paths from a CSV file              |
 | `--out-file <path>`   | `create_tx`, `create_token_tx`, `create_sbtc_tx`, `sign`, `broadcast` | Output JSON directly to file |
+| `--api-key <path>`    | `broadcast`                                         | Use Hiro API key to avoid rate limits                 |
 
 ## Examples
+
+### Using Hiro API Key
+
+To avoid rate limits when creating transactions or broadcasting them, you can use a Hiro API key:
+
+1. Get an API key from [Hiro](https://docs.hiro.so/api)
+2. Save your API key to a file
+3. Use the `--api-key` flag with the relevant commands:
+   ```sh
+   # When broadcasting transactions
+   npm start -- broadcast --api-key path/to/api-key-file
+   ```
+
+This is especially useful when working with multiple transactions to avoid hitting rate limits.
 
 ### Receiving Funds
 
@@ -47,7 +62,7 @@ npm start -- <subcommand> [args]
    ```sh
    npm start -- get_pub <path>
    ```
-   If you are unsure of what `path` to use to generate the pubkey for your account, try `m/44'/5757'/0/0/0`
+   If you are unsure of what `path` to use to generate the pubkey for your account, try `m/5757'/0'/0/0/0` or `m/44'/5757'/0/0/0`
 
 2. Create a multisig address from pubkeys
    ```sh
@@ -212,6 +227,15 @@ For JSON files, use arrays of objects with the same field names as the CSV heade
 ]
 ```
 
+### CSV File Structure
+
+The Key Path Map CSV file should have the following columns with the public key for each signer for each path 
+
+| Column Name | Description |
+| --- | --- |
+| `key` | Derivation Path |
+| `path` | Public Key for that Path a Given Signer |
+
 ## Using Docker
 
 You will need Docker and `just` (can be installed by `cargo install just`)
@@ -228,4 +252,3 @@ Run the same way you would run normally, but replace the `npm start --` prefix w
 
 ```sh
 just run [args...]
-```

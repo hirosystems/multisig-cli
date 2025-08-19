@@ -1,13 +1,16 @@
 import { describe, expect, it, test } from 'vitest';
 
 import * as cli from "../src/cli";
-//import * as StxTx from "@stacks/transactions";
+import * as lib from "../src/lib";
 
 describe('Bulk transfer generation', async () => {
   const outputFromCsv = await cli.subcommand_create_tx([
     '--json-inputs',
     './tests/fixtures/transaction_inputs.json'
   ]);
+
+  // Clear cache so nonce values will match
+  lib.cache.clear();
 
   const outputFromJson = await cli.subcommand_create_tx([
     '--csv-inputs',

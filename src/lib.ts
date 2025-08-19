@@ -10,9 +10,10 @@ import * as btc from "bitcoinjs-lib";
 import * as C32 from "c32check";
 import { createTransactionAuthField, TransactionAuthField, StacksTransaction } from "@stacks/transactions";
 import * as StxTx from "@stacks/transactions";
+import * as StxNet from "@stacks/network";
 import { StacksNetworkName } from "@stacks/network";
 import { bytesToHex } from '@stacks/common';
-import * as fs from 'node:fs/promises';
+import * as fsPromises from 'node:fs/promises';
 import * as base64 from 'base64-js';
 
 // This will generate pubkeys using
@@ -41,7 +42,9 @@ export interface MultisigTxInput {
   sender?: string  // Optional. Can be used to check address generation from pubkeys
   recipient: string
   fee?: string
-  amount: string
+  // If both `amount` and `amount_stx` are present, they are added together
+  amount?: string // Amount in uSTX
+  amount_stx?: string // Amount in STX
   publicKeys: string[]
   numSignatures: number
   nonce?: string
@@ -63,6 +66,15 @@ export interface MultisigTokenTxInput {
   contractName: string
   tokenName?: string  // Optional, defaults to contract name
   decimals?: number   // Optional, defaults to 8 for sBTC
+}
+
+export interface MultisigClaimTxInput {
+  sender?: string  // Optional. Can be used to check address generation from pubkeys
+  fee?: string
+  publicKeys: string[]
+  numSignatures: number
+  nonce?: string
+  network?: string
 }
 
 // Export `StacksTransaction` as base64-encoded string
@@ -101,6 +113,19 @@ export function parseNetworkName(input: string | undefined): StacksNetworkName |
   return undefined;
 }
 
+// Create new `StacksNetwork` for mainnet or testnet, depending on contents of transaction
+export function getStacksNetworkFromTx(tx: StacksTransaction, opts?: Partial<StxNet.NetworkConfig> | undefined): StxNet.StacksNetwork {
+  switch (tx.version) {
+    case StxTx.TransactionVersion.Mainnet:
+      return new StxNet.StacksMainnet(opts);
+    case StxTx.TransactionVersion.Testnet:
+      return new StxNet.StacksTestnet(opts);
+    default:
+      console.log(`Unknown value for \`tx.version\`: ${tx.version}. Assuming testnet`);
+      return new StxNet.StacksTestnet(opts);
+  }
+}
+
 export async function getPubKey(app: StxApp, path: string): Promise<string> {
   const amt = await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig);
   return amt.publicKey.toString('hex');
@@ -115,6 +140,29 @@ export async function getPubKeyMultisigStandardIndex(app: StxApp, index: number)
   const path = `${BTC_MULTISIG_SCRIPT_PATH}/0/${index}`;
   return { pubkey: await getPubKey(app, path), path };
 }
+
+// Wrapper around any cached objects
+export const cache = {
+  nonces: new Map<string, bigint>,
+
+  // Avoid duplicating `getNonce()` calls to the network, which will give incorrect results if generating multiple txs from a single address
+  async getNonce(addr: string): Promise<bigint> {
+    let nonce;
+    const cachedNonce = this.nonces.get(addr);
+    if (cachedNonce === undefined) {
+      nonce = await StxTx.getNonce(addr);
+    } else {
+      nonce = cachedNonce + 1n;
+    }
+    this.nonces.set(addr, nonce)
+    return nonce;
+  },
+
+  // Clear `this`
+  clear() {
+    this.nonces.clear()
+  }
+};
 
 export async function generateMultiSigAddr(app: StxApp, signers: number, requiredSignatures: number) {
   // Get pubkey/path pairs from device
@@ -155,7 +203,7 @@ export function makeMultiSigAddr(pubkeys: string[], required: number): string {
 // Check that pubkeys match sender address and return in correct order
 export function checkAddressPubKeyMatch(pubkeys: string[], required: number, address: string): string[] {
   // first try in sorted order
-  let authorizedPKs = pubkeys.slice().sort().map((k) => Buffer.from(k, 'hex'));
+  let authorizedPKs = pubkeys.slice().sort().map(k => Buffer.from(k, 'hex'));
   let redeem = btc.payments.p2ms({ m: required, pubkeys: authorizedPKs });
   let btcAddr = btc.payments.p2sh({ redeem }).address;
   if (!btcAddr) {
@@ -167,7 +215,7 @@ export function checkAddressPubKeyMatch(pubkeys: string[], required: number, add
   }
 
   // try in order given
-  authorizedPKs = pubkeys.slice().map((k) => Buffer.from(k, 'hex'));
+  authorizedPKs = pubkeys.slice().map(k => Buffer.from(k, 'hex'));
   redeem = btc.payments.p2ms({ m: required, pubkeys: authorizedPKs });
   btcAddr = btc.payments.p2sh({ redeem }).address;
   if (!btcAddr) {
@@ -200,7 +248,7 @@ function setMultisigTransactionSpendingConditionFields(tx: StacksTransaction, fi
 
 // Create transactions from file path
 export async function makeKeyPathMapFromCSVFile(file: string): Promise<Map<string, string>> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeKeyPathMapFromCSVText(data);
 }
 
@@ -236,7 +284,7 @@ export function makeKeyPathMapFromCSVText(text: string): Map<string, string> {
 
 // Create transactions from file path
 export async function makeTxInputsFromCSVFile(file: string): Promise<MultisigTxInput[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeTxInputsFromCSVText(data);
 }
 
@@ -283,12 +331,12 @@ export function makeTxInputsFromCSVText(text: string): MultisigTxInput[] {
   });
   //console.dir(data, {depth: null, colors: true});
 
-  return validateTxInputs(data as MultisigTxInput[]);
+  return validateTxInputs(data);
 }
 
 // Create transactions from file path
 export async function makeTxInputsFromFile(file: string): Promise<MultisigTxInput[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return makeTxInputsFromText(data);
 }
 
@@ -380,8 +428,15 @@ export function validateTxInputs(data: object[]): MultisigTxInput[] {
     if (typeof input.recipient !== 'string') {
       throw Error(`${errorPrefix}: Property 'recipient' of element ${i} not valid: ${input.recipient}'`);
     }
-    if (typeof input.amount !== 'string') {
+    if (input.amount && typeof input.amount !== 'string') {
       throw Error(`${errorPrefix}: Property 'amount' of element ${i} not valid: ${input.amount}'`);
+    }
+    if (input.amount_stx && typeof input.amount_stx !== 'string') {
+      throw Error(`${errorPrefix}: Property 'amount_stx' of element ${i} not valid: ${input.amount_stx}'`);
+    }
+    // Must contain at least one, can contain both
+    if (!input.amount && !input.amount_stx) {
+      throw Error(`${errorPrefix}: Property 'amount' and/or 'amount_stx' must be defined'`);
     }
     if (!Array.isArray(input.publicKeys)) {
       throw Error(`${errorPrefix}: Property 'publicKeys' of element ${i} not valid: ${input.publicKeys}'`);
@@ -504,8 +559,16 @@ export async function makeStxTokenTransfers(inputs: MultisigTxInput[]): Promise<
 export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<StacksTransaction> {
   let { publicKeys } = input;
   const { sender, recipient, numSignatures, memo } = input;
-  const amount = BigInt(input.amount);
   const anchorMode = StxTx.AnchorMode.Any;
+
+  // Calculate amount in μSTX
+  let amount = 0n;
+  if (input.amount) {
+    amount += BigInt(input.amount);
+  }
+  if (input.amount_stx) {
+    amount += BigInt(input.amount_stx) * 1_000_000n;
+  }
 
   // Validate sender address if present
   // This may re-order publicKeys to match address
@@ -521,7 +584,7 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
   } else {
     // Shouldn't Stacks.js automatically set nonce if not given?
     const addr = makeMultiSigAddr(publicKeys, numSignatures);
-    options.nonce = await StxTx.getNonce(addr);
+    options.nonce = await cache.getNonce(addr);
   }
 
   if (input.fee) {
@@ -589,7 +652,7 @@ export async function makeTokenTransfer(input: MultisigTokenTxInput): Promise<St
   } else {
     // Get nonce for the multisig address
     const addr = makeMultiSigAddr(publicKeys, numSignatures);
-    options.nonce = await StxTx.getNonce(addr);
+    options.nonce = await cache.getNonce(addr);
   }
 
   if (input.fee) {
@@ -611,6 +674,210 @@ export async function makeTokenTransfer(input: MultisigTokenTxInput): Promise<St
   setMultisigTransactionSpendingConditionFields(unsignedTx, authFields);
 
   return unsignedTx;
+}
+
+/// Builds an unsigned transfer out of a multisig data serialization
+export async function makeSip31claim(input: MultisigClaimTxInput): Promise<StacksTransaction> {
+  let { publicKeys } = input;
+  const { sender, numSignatures } = input;
+  const anchorMode = StxTx.AnchorMode.Any;
+
+  // Validate sender address if present
+  // This may re-order publicKeys to match address
+  if (sender) {
+    publicKeys = checkAddressPubKeyMatch(publicKeys, numSignatures, sender);
+  }
+
+  const options: StxTx.UnsignedMultiSigContractCallOptions = {
+    anchorMode, numSignatures, publicKeys,
+    functionName: "claim",
+    functionArgs: [],
+    contractAddress: "SP000000000000000000002Q6VF78",
+    contractName: "sip-031",
+  };
+
+  // Conditional fields
+  if (input.nonce) {
+    options.nonce = BigInt(input.nonce);
+  } else {
+    const addr = makeMultiSigAddr(publicKeys, numSignatures);
+    options.nonce = await cache.getNonce(addr);
+  }
+
+  if (input.fee) {
+    options.fee = BigInt(input.fee);
+  }
+
+  const network = parseNetworkName(input.network);
+  if (network) {
+    options.network = network;
+  }
+
+  // Always use SIP-027 (non-sequential) transactions. No reason to use legacy (sequential) type
+  options.useNonSequentialMultiSig = true;
+  // NOTE: this sets the post condition mode of this transaction to ALLOW.
+  // this is dangerous for most contract-calls, however, for SIP-31 claims, the SIP-31
+  // contract is trusted to make an appropriate transfer (and nothing else!)
+  // If you update this code to call other contracts, using ALLOW mode on the post-conditions
+  // is unsafe!
+  options.postConditionMode = StxTx.PostConditionMode.Allow;
+
+  const unsignedTx = await StxTx.makeUnsignedContractCall(options);
+
+  // Set public keys in auth fields
+  // TODO: Is this necessary to set auth fields or already done by `makeUnsignedSTXTokenTransfer()`
+  const authFields = makeSpendingConditionFields(publicKeys);
+  setMultisigTransactionSpendingConditionFields(unsignedTx, authFields);
+
+  return unsignedTx;
+}
+
+export function validateTokenTxInputs(data: object[]): MultisigTokenTxInput[] {
+  const errorPrefix = 'Token transaction input validation failed';
+  const inputs = data as MultisigTokenTxInput[];
+
+  if (!Array.isArray(data)) {
+    throw Error(`${errorPrefix}: Data is not an array`);
+  }
+  for (const i in inputs) {
+    const input = inputs[i];
+    const t = typeof input;
+    if (t !== 'object') {
+      throw Error(`${errorPrefix}: Element at index ${i} is of type '${t}'`);
+    }
+    if (typeof input.recipient !== 'string') {
+      throw Error(`${errorPrefix}: Property 'recipient' of element ${i} not valid: ${input.recipient}'`);
+    }
+    if (typeof input.amount !== 'string') {
+      throw Error(`${errorPrefix}: Property 'amount' of element ${i} not valid: ${input.amount}'`);
+    }
+    if (typeof input.contractAddress !== 'string') {
+      throw Error(`${errorPrefix}: Property 'contractAddress' of element ${i} not valid: ${input.contractAddress}'`);
+    }
+    if (typeof input.contractName !== 'string') {
+      throw Error(`${errorPrefix}: Property 'contractName' of element ${i} not valid: ${input.contractName}'`);
+    }
+    if (!Array.isArray(input.publicKeys)) {
+      throw Error(`${errorPrefix}: Property 'publicKeys' of element ${i} not valid: ${input.publicKeys}'`);
+    }
+    for (const e of input.publicKeys) {
+      if (typeof e !== 'string') {
+        throw Error(`${errorPrefix}: Property 'publicKeys' of element ${i} contains invalid element: ${e}'`);
+      }
+    }
+    if (typeof input.numSignatures !== 'number') {
+      throw Error(`${errorPrefix}: Property 'numSignatures' of element ${i} not valid: ${input.numSignatures}'`);
+    }
+    if (input.fee && typeof input.fee !== 'string') {
+      throw Error(`${errorPrefix}: Property 'fee' of element ${i} not valid: ${input.fee}'`);
+    }
+    if (input.nonce && typeof input.nonce !== 'string') {
+      throw Error(`${errorPrefix}: Property 'nonce' of element ${i} not valid: ${input.nonce}'`);
+    }
+    if (input.sender && typeof input.sender !== 'string') {
+      throw Error(`${errorPrefix}: Property 'sender' of element ${i} not valid: ${input.sender}'`);
+    }
+    if (input.memo && typeof input.memo !== 'string') {
+      throw Error(`${errorPrefix}: Property 'memo' of element ${i} not valid: ${input.memo}'`);
+    }
+    if (input.tokenName && typeof input.tokenName !== 'string') {
+      throw Error(`${errorPrefix}: Property 'tokenName' of element ${i} not valid: ${input.tokenName}'`);
+    }
+    if (input.decimals && typeof input.decimals !== 'number') {
+      throw Error(`${errorPrefix}: Property 'decimals' of element ${i} not valid: ${input.decimals}'`);
+    }
+  }
+
+  return data as MultisigTokenTxInput[];
+}
+
+// Helper function to create sBTC token transfer input
+export function createSbtcTransferInput(
+  recipient: string,
+  amount: string,
+  publicKeys: string[],
+  numSignatures: number,
+  network: 'mainnet' | 'testnet' = 'mainnet',
+  options?: Partial<MultisigTokenTxInput>
+): MultisigTokenTxInput {
+  const config = SBTC_CONFIG[network];
+  return {
+    recipient,
+    amount,
+    publicKeys,
+    numSignatures,
+    contractAddress: config.contractAddress,
+    contractName: config.contractName,
+    decimals: config.decimals,
+    network,
+    ...options
+  };
+}
+
+// Create token transactions from CSV file path
+export async function makeTokenTxInputsFromCSVFile(file: string): Promise<MultisigTokenTxInput[]> {
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
+  return makeTokenTxInputsFromCSVText(data);
+}
+
+// Create token transactions from raw CSV string data
+export function makeTokenTxInputsFromCSVText(text: string): MultisigTokenTxInput[] {
+  const { data, errors } = Papa.parse(text, {
+    delimiter: ',',
+    header: true,
+    skipEmptyLines: true
+  });
+
+  if (errors.length) {
+    console.dir(errors, {depth: null, colors: true});
+    throw Error('Errors parsing CSV data');
+  }
+
+  if (!Array.isArray(data)) {
+    throw Error('Data is not array');
+  }
+
+  // Everything is parsed as strings. Need to fix up the data here...
+  data.forEach((line: unknown) => {
+    const lineObj = line as Record<string, unknown>;
+    Object.keys(lineObj).forEach(k => {
+      const v = lineObj[k];
+      if (v === undefined || v === null  || v === '') {
+        // Delete null, undefined, or empty string fields
+        delete lineObj[k];
+      } else if (k.includes('/')) {
+        // Build arrays out of keys with '/'
+        const [ arr, index, ...rest ] = k.split('/');
+        if (rest.length) {
+          throw Error('Multidimensional arrays not supported');
+        }
+        const i = parseInt(index);
+        lineObj[arr] ??= [];
+        (lineObj[arr] as unknown[])[i] = v;
+        delete lineObj[k];
+      }
+    });
+
+    // Conversions
+    lineObj['numSignatures'] = parseInt(lineObj['numSignatures'] as string);
+    if (lineObj['decimals']) {
+      lineObj['decimals'] = parseInt(lineObj['decimals'] as string);
+    }
+  });
+
+  return validateTokenTxInputs(data as MultisigTokenTxInput[]);
+}
+
+// Create token transactions from JSON file path
+export async function makeTokenTxInputsFromFile(file: string): Promise<MultisigTokenTxInput[]> {
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
+  return makeTokenTxInputsFromText(data);
+}
+
+// Create token transactions from raw JSON string data
+export function makeTokenTxInputsFromText(text: string): MultisigTokenTxInput[] {
+  const data = JSON.parse(text);
+  return validateTokenTxInputs(data);
 }
 
 export interface AuthFieldInfo {
@@ -670,7 +937,7 @@ export function getSignersAfter(pubkey: string, authFields: TransactionAuthField
 
 // Create transactions from file path
 export async function encodedTxsFromFile(file: string): Promise<string[]> {
-  const data = await fs.readFile(file, { encoding: 'utf8' });
+  const data = await fsPromises.readFile(file, { encoding: 'utf8' });
   return encodedTxsFromText(data);
 }
 
@@ -695,8 +962,7 @@ export function encodedTxsFromText(str: string): string[] {
 }
 
 export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: StacksTransaction): Promise<StacksTransaction> {
-  const pubkey = (await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig))
-    .publicKey.toString('hex');
+  const pubkey = await getPubKey(app, path);
 
   // Check transaction is correct type
   const spendingCondition = tx.auth.spendingCondition as StxTx.MultiSigSpendingCondition;
@@ -738,8 +1004,7 @@ export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: Stacks
 }
 
 export async function ledgerSignTx(app: StxApp, path: string, partialFields: TransactionAuthField[], unsignedTx: Buffer, prevSigHash?: string) {
-  const pubkey = (await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig))
-    .publicKey.toString('hex');
+  const pubkey = await getPubKey(app, path);
 
   const outFields = partialFields.slice();
   const pubkeys = partialFields
@@ -810,10 +1075,10 @@ export async function generateMultiSignedTx(): Promise<StacksTransaction> {
   //console.log(makeMultiSigAddr(pubkeys, 2));
 
   const transaction = await StxTx.makeUnsignedSTXTokenTransfer({
-    fee: BigInt(300),
+    fee: 300n,
     numSignatures: 2,
     publicKeys: pubkeys,
-    amount: BigInt(1000),
+    amount: 1000n,
     recipient: "SP000000000000000000002Q6VF78",
     anchorMode: StxTx.AnchorMode.Any,
   });
@@ -838,10 +1103,10 @@ export async function generateMultiUnsignedTx() {
   console.log(makeMultiSigAddr(pubkeys, 2));
 
   const unsignedTx = await StxTx.makeUnsignedSTXTokenTransfer({
-    fee: BigInt(300),
+    fee: 300n,
     numSignatures: 2,
     publicKeys: pubkeys,
-    amount: BigInt(1000),
+    amount: 1000n,
     recipient: "SP000000000000000000002Q6VF78",
     anchorMode: StxTx.AnchorMode.Any,
   });

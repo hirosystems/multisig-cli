@@ -5,6 +5,8 @@ import readline from "readline";
 import { Console } from 'node:console';
 
 import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
+import * as StxNet from "@stacks/network";
 import * as StxTx from "@stacks/transactions";
 import * as lib from "./lib";
 
@@ -91,6 +93,41 @@ export async function subcommand_check_multi(): Promise<string> {
 
   // return value for unit testing
   return c32;
+}
+
+export async function subcommand_create_sip31_claim(args: string[]): Promise<string> {
+  const idxOutFile = args.indexOf('--out-file');
+  const sender = await readInput("From Address (C32)");
+  const publicKeys = (await readInput("From public keys (comma separate)")).split(',').map(x => x.trim());
+  const numSignatures = parseInt(await readInput("Required signers (number)"));
+  const fee = await readInput("microSTX fee (optional)");
+  const nonce = await readInput("Nonce (optional)");
+  const network = await readInput("Network (optional) [testnet/mainnet]");
+
+  const inputs =
+    { sender, fee, publicKeys, numSignatures, nonce, network };
+  const tx = await lib.makeSip31claim(inputs);
+  const txEncoded = lib.txEncode(tx);
+
+  // Output transaction. Show extra headers and colors if we are not outputting to pipe or file
+  let outStream = console;
+  let outIsTerm = process.stdout.isTTY;
+
+  if (idxOutFile >= 0) {
+    const fileName = args[idxOutFile + 1];
+    const stdout = fs.createWriteStream(fileName);
+    const stderr = fs.createWriteStream(`${fileName}.err`);
+    outStream = new Console({ stdout, stderr });
+    outIsTerm = false;
+  }
+  if (outIsTerm) {
+    outStream.log(`Unsigned multisig transaction`);
+    outStream.log(`--------------------------------`);
+  }
+  outStream.log(JSON.stringify([txEncoded], null, 2));
+
+  // return value for unit testing
+  return txEncoded;
 }
 
 export async function subcommand_create_tx(args: string[]): Promise<string[]> {
@@ -288,7 +325,7 @@ export async function subcommand_sign(args: string[], transport: Transport): Pro
 
   // Read key/path mappings if given
   let keyPaths = new Map<string, string>;
-  if (idxJsonTxs >= 0) {
+  if (idxCsvKeys >= 0) {
     keyPaths = await lib.makeKeyPathMapFromCSVFile(args[idxCsvKeys + 1]);
   }
 
@@ -300,7 +337,12 @@ export async function subcommand_sign(args: string[], transport: Transport): Pro
       if (sigs >= info.signaturesRequired) break;
       const hdPath = keyPaths.get(pk) ?? await readInput(`HD derivation path for ${pk} (empty to skip for this key)`);
       if (!hdPath) continue;
-      console.log(`Expecting ${hdPath}=>${pk}...`);
+      const pkFromDevice = await lib.getPubKey(app, hdPath);
+      if (pk !== pkFromDevice) {
+        console.log(`${hdPath} does not corresponsd to pubkey ${pk} (got ${pkFromDevice}). Skipping...`);
+        continue;
+      }
+      console.log(`Using ${hdPath}=>${pk}...`);
       console.log("    *** Please check and approve signing on Ledger ***");
       tx = await lib.ledgerSignMultisigTx(app, hdPath, tx);
       sigs += 1;
@@ -341,6 +383,7 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
   // Parse args
   const idxJsonTxs = args.indexOf('--json-txs');
   const idxOutFile = args.indexOf('--out-file');
+  const idxApiKey = args.indexOf('--api-key');
   const dryRun = args.includes('--dry-run');
 
   // Get transactions
@@ -350,6 +393,19 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
   } else {
     const txEncoded = await readInput("Signed transaction input (base64)");
     txsEncoded = [ txEncoded ];
+  }
+
+  // Will return `StacksNetwork` if we need custom network config, like when using API key
+  // A value of `undefined` will result in using default network config
+  let networkBuilder = (tx: StxTx.StacksTransaction): StxNet.StacksNetwork | undefined => undefined;
+
+  // Read API key, if exists
+  if (idxApiKey >= 0) {
+    const apiKey = await fsPromises.readFile(args[idxApiKey + 1], { encoding: 'utf8' });
+    const apiMiddleware = StxNet.createApiKeyMiddleware({ apiKey });
+    const fetchFn = StxNet.createFetchFn(apiMiddleware);
+    const opts: Partial<StxNet.NetworkConfig> = { fetchFn };
+    networkBuilder = tx => lib.getStacksNetworkFromTx(tx, opts);
   }
 
   // Decode transactions
@@ -367,7 +423,7 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
 
   // Broadcast transactions. Use async so it happens in parallel
   const results = await Promise.all(
-    txs.map(async (tx) => await broadcastFn(tx))
+    txs.map(async (tx) => await broadcastFn(tx, networkBuilder(tx)))
   );
 
   // Output results
@@ -436,6 +492,9 @@ export async function main(args: string[]) {
     break;
   case 'check_multi':
     await subcommand_check_multi();
+    break;
+  case 'create_sip31_claim':
+    await subcommand_create_sip31_claim(args);
     break;
   case 'create_tx':
     await subcommand_create_tx(args);
