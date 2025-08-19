@@ -23,6 +23,20 @@ const XPUB_PATH = `m/44'/5757'/0'`;
 //  the format: m/5757'/0'/0/0/x
 const BTC_MULTISIG_SCRIPT_PATH = `m/5757'/0'/0`;
 
+// sBTC configuration constants
+export const SBTC_CONFIG = {
+  mainnet: {
+    contractAddress: 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4',
+    contractName: 'sbtc-token',
+    decimals: 8
+  },
+  testnet: {
+    contractAddress: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM',
+    contractName: 'sbtc-token',
+    decimals: 8
+  }
+};
+
 export interface MultisigTxInput {
   sender?: string  // Optional. Can be used to check address generation from pubkeys
   recipient: string
@@ -33,6 +47,22 @@ export interface MultisigTxInput {
   nonce?: string
   network?: string
   memo?: string
+}
+
+export interface MultisigTokenTxInput {
+  sender?: string  // Optional. Can be used to check address generation from pubkeys
+  recipient: string
+  fee?: string
+  amount: string
+  publicKeys: string[]
+  numSignatures: number
+  nonce?: string
+  network?: string
+  memo?: string
+  contractAddress: string
+  contractName: string
+  tokenName?: string  // Optional, defaults to contract name
+  decimals?: number   // Optional, defaults to 8 for sBTC
 }
 
 // Export `StacksTransaction` as base64-encoded string
@@ -228,12 +258,13 @@ export function makeTxInputsFromCSVText(text: string): MultisigTxInput[] {
   }
 
   // Everything is parsed as strings. Need to fix up the data here...
-  data.forEach((line: any) => {
-    Object.keys(line).forEach(k => {
-      const v = line[k];
+  data.forEach((line: unknown) => {
+    const lineObj = line as Record<string, unknown>;
+    Object.keys(lineObj).forEach(k => {
+      const v = lineObj[k];
       if (v === undefined || v === null  || v === '') {
         // Delete null, undefined, or empty string fields
-        delete line[k];
+        delete lineObj[k];
       } else if (k.includes('/')) {
         // Build arrays out of keys with '/'
         const [ arr, index, ...rest ] = k.split('/');
@@ -241,14 +272,14 @@ export function makeTxInputsFromCSVText(text: string): MultisigTxInput[] {
           throw Error('Multidimensional arrays not supported');
         }
         const i = parseInt(index);
-        line[arr] ??= [];
-        line[arr][i] = v;
-        delete line[k];
+        lineObj[arr] ??= [];
+        (lineObj[arr] as unknown[])[i] = v;
+        delete lineObj[k];
       }
     });
 
     // Conversions
-    line['numSignatures'] = parseInt(line['numSignatures']);
+    lineObj['numSignatures'] = parseInt(lineObj['numSignatures'] as string);
   });
   //console.dir(data, {depth: null, colors: true});
 
@@ -265,6 +296,72 @@ export async function makeTxInputsFromFile(file: string): Promise<MultisigTxInpu
 export function makeTxInputsFromText(text: string): MultisigTxInput[] {
   const data = JSON.parse(text);
   return validateTxInputs(data);
+}
+
+// Create token transactions from CSV file path
+export async function makeTokenTxInputsFromCSVFile(file: string): Promise<MultisigTokenTxInput[]> {
+  const data = await fs.readFile(file, { encoding: 'utf8' });
+  return makeTokenTxInputsFromCSVText(data);
+}
+
+// Create token transactions from raw CSV string data
+export function makeTokenTxInputsFromCSVText(text: string): MultisigTokenTxInput[] {
+  const { data, errors } = Papa.parse(text, {
+    delimiter: ',',
+    header: true,
+    skipEmptyLines: true
+  });
+
+  if (errors.length) {
+    console.dir(errors, {depth: null, colors: true});
+    throw Error('Errors parsing CSV data');
+  }
+
+  if (!Array.isArray(data)) {
+    throw Error('Data is not array');
+  }
+
+  // Everything is parsed as strings. Need to fix up the data here...
+  data.forEach((line: unknown) => {
+    const lineObj = line as Record<string, unknown>;
+    Object.keys(lineObj).forEach(k => {
+      const v = lineObj[k];
+      if (v === undefined || v === null  || v === '') {
+        // Delete null, undefined, or empty string fields
+        delete lineObj[k];
+      } else if (k.includes('/')) {
+        // Build arrays out of keys with '/'
+        const [ arr, index, ...rest ] = k.split('/');
+        if (rest.length) {
+          throw Error('Multidimensional arrays not supported');
+        }
+        const i = parseInt(index);
+        lineObj[arr] ??= [];
+        (lineObj[arr] as unknown[])[i] = v;
+        delete lineObj[k];
+      }
+    });
+
+    // Conversions
+    lineObj['numSignatures'] = parseInt(lineObj['numSignatures'] as string);
+    if (lineObj['decimals']) {
+      lineObj['decimals'] = parseInt(lineObj['decimals'] as string);
+    }
+  });
+
+  return validateTokenTxInputs(data as MultisigTokenTxInput[]);
+}
+
+// Create token transactions from JSON file path
+export async function makeTokenTxInputsFromFile(file: string): Promise<MultisigTokenTxInput[]> {
+  const data = await fs.readFile(file, { encoding: 'utf8' });
+  return makeTokenTxInputsFromText(data);
+}
+
+// Create token transactions from raw JSON string data
+export function makeTokenTxInputsFromText(text: string): MultisigTokenTxInput[] {
+  const data = JSON.parse(text);
+  return validateTokenTxInputs(data);
 }
 
 export function validateTxInputs(data: object[]): MultisigTxInput[] {
@@ -315,6 +412,88 @@ export function validateTxInputs(data: object[]): MultisigTxInput[] {
   return data as MultisigTxInput[];
 }
 
+export function validateTokenTxInputs(data: object[]): MultisigTokenTxInput[] {
+  const errorPrefix = 'Token transaction input validation failed';
+  const inputs = data as MultisigTokenTxInput[];
+
+  if (!Array.isArray(data)) {
+    throw Error(`${errorPrefix}: Data is not an array`);
+  }
+  for (const i in inputs) {
+    const input = inputs[i];
+    const t = typeof input;
+    if (t !== 'object') {
+      throw Error(`${errorPrefix}: Element at index ${i} is of type '${t}'`);
+    }
+    if (typeof input.recipient !== 'string') {
+      throw Error(`${errorPrefix}: Property 'recipient' of element ${i} not valid: ${input.recipient}'`);
+    }
+    if (typeof input.amount !== 'string') {
+      throw Error(`${errorPrefix}: Property 'amount' of element ${i} not valid: ${input.amount}'`);
+    }
+    if (typeof input.contractAddress !== 'string') {
+      throw Error(`${errorPrefix}: Property 'contractAddress' of element ${i} not valid: ${input.contractAddress}'`);
+    }
+    if (typeof input.contractName !== 'string') {
+      throw Error(`${errorPrefix}: Property 'contractName' of element ${i} not valid: ${input.contractName}'`);
+    }
+    if (!Array.isArray(input.publicKeys)) {
+      throw Error(`${errorPrefix}: Property 'publicKeys' of element ${i} not valid: ${input.publicKeys}'`);
+    }
+    for (const e of input.publicKeys) {
+      if (typeof e !== 'string') {
+        throw Error(`${errorPrefix}: Property 'publicKeys' of element ${i} contains invalid element: ${e}'`);
+      }
+    }
+    if (typeof input.numSignatures !== 'number') {
+      throw Error(`${errorPrefix}: Property 'numSignatures' of element ${i} not valid: ${input.numSignatures}'`);
+    }
+    if (input.fee && typeof input.fee !== 'string') {
+      throw Error(`${errorPrefix}: Property 'fee' of element ${i} not valid: ${input.fee}'`);
+    }
+    if (input.nonce && typeof input.nonce !== 'string') {
+      throw Error(`${errorPrefix}: Property 'nonce' of element ${i} not valid: ${input.nonce}'`);
+    }
+    if (input.sender && typeof input.sender !== 'string') {
+      throw Error(`${errorPrefix}: Property 'sender' of element ${i} not valid: ${input.sender}'`);
+    }
+    if (input.memo && typeof input.memo !== 'string') {
+      throw Error(`${errorPrefix}: Property 'memo' of element ${i} not valid: ${input.memo}'`);
+    }
+    if (input.tokenName && typeof input.tokenName !== 'string') {
+      throw Error(`${errorPrefix}: Property 'tokenName' of element ${i} not valid: ${input.tokenName}'`);
+    }
+    if (input.decimals && typeof input.decimals !== 'number') {
+      throw Error(`${errorPrefix}: Property 'decimals' of element ${i} not valid: ${input.decimals}'`);
+    }
+  }
+
+  return data as MultisigTokenTxInput[];
+}
+
+// Helper function to create sBTC token transfer input
+export function createSbtcTransferInput(
+  recipient: string,
+  amount: string,
+  publicKeys: string[],
+  numSignatures: number,
+  network: 'mainnet' | 'testnet' = 'mainnet',
+  options?: Partial<MultisigTokenTxInput>
+): MultisigTokenTxInput {
+  const config = SBTC_CONFIG[network];
+  return {
+    recipient,
+    amount,
+    publicKeys,
+    numSignatures,
+    contractAddress: config.contractAddress,
+    contractName: config.contractName,
+    decimals: config.decimals,
+    network,
+    ...options
+  };
+}
+
 // Create transactions from `MultisigTxInput[]`
 export async function makeStxTokenTransfers(inputs: MultisigTxInput[]): Promise<StacksTransaction[]> {
   // Use Promise.all to process inputs in parallel
@@ -361,6 +540,73 @@ export async function makeStxTokenTransfer(input: MultisigTxInput): Promise<Stac
 
   // Set public keys in auth fields
   // TODO: Is this necessary to set auth fields or already done by `makeUnsignedSTXTokenTransfer()`
+  const authFields = makeSpendingConditionFields(publicKeys);
+  setMultisigTransactionSpendingConditionFields(unsignedTx, authFields);
+
+  return unsignedTx;
+}
+
+// Create token transactions from `MultisigTokenTxInput[]`
+export async function makeTokenTransfers(inputs: MultisigTokenTxInput[]): Promise<StacksTransaction[]> {
+  // Use Promise.all to process inputs in parallel
+  return await Promise.all(inputs.map(makeTokenTransfer));
+}
+
+/// Builds an unsigned SIP-010 token transfer out of a multisig data serialization
+export async function makeTokenTransfer(input: MultisigTokenTxInput): Promise<StacksTransaction> {
+  let { publicKeys } = input;
+  const { sender, recipient, numSignatures, memo, contractAddress, contractName } = input;
+  const amount = BigInt(input.amount);
+  const anchorMode = StxTx.AnchorMode.Any;
+
+  // Validate sender address if present
+  // This may re-order publicKeys to match address
+  if (sender) {
+    publicKeys = checkAddressPubKeyMatch(publicKeys, numSignatures, sender);
+  }
+
+  // Create function args for SIP-010 transfer: (amount sender recipient memo)
+  const functionArgs = [
+    StxTx.uintCV(amount),
+    StxTx.principalCV(sender || makeMultiSigAddr(publicKeys, numSignatures)),
+    StxTx.principalCV(recipient),
+    memo ? StxTx.someCV(StxTx.bufferCV(Buffer.from(memo, 'utf8'))) : StxTx.noneCV()
+  ];
+
+  const options: StxTx.UnsignedMultiSigContractCallOptions = {
+    anchorMode,
+    numSignatures,
+    publicKeys,
+    contractAddress,
+    contractName,
+    functionName: 'transfer',
+    functionArgs
+  };
+
+  // Conditional fields
+  if (input.nonce) {
+    options.nonce = BigInt(input.nonce);
+  } else {
+    // Get nonce for the multisig address
+    const addr = makeMultiSigAddr(publicKeys, numSignatures);
+    options.nonce = await StxTx.getNonce(addr);
+  }
+
+  if (input.fee) {
+    options.fee = BigInt(input.fee);
+  }
+
+  const network = parseNetworkName(input.network);
+  if (network) {
+    options.network = network;
+  }
+
+  // Always use SIP-027 (non-sequential) transactions
+  options.useNonSequentialMultiSig = true;
+
+  const unsignedTx = await StxTx.makeUnsignedContractCall(options);
+
+  // Set public keys in auth fields
   const authFields = makeSpendingConditionFields(publicKeys);
   setMultisigTransactionSpendingConditionFields(unsignedTx, authFields);
 

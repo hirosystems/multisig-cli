@@ -146,6 +146,124 @@ export async function subcommand_create_tx(args: string[]): Promise<string[]> {
   return txsEncoded;
 }
 
+export async function subcommand_create_token_tx(args: string[]): Promise<string[]> {
+  // Process args
+  const idxJsonInputs = args.indexOf('--json-inputs');
+  const idxCsvInputs = args.indexOf('--csv-inputs');
+  const idxOutFile = args.indexOf('--out-file');
+
+  // Get inputs
+  let inputs: lib.MultisigTokenTxInput[];
+
+  if (idxJsonInputs >= 0) {
+    inputs = await lib.makeTokenTxInputsFromFile(args[idxJsonInputs + 1]);
+  } else if (idxCsvInputs >= 0) {
+    inputs = await lib.makeTokenTxInputsFromCSVFile(args[idxCsvInputs + 1]);
+  } else {
+    const sender = await readInput("From Address (C32)");
+    const publicKeys = (await readInput("From public keys (comma separate)")).split(',').map(x => x.trim());
+    const numSignatures = parseInt(await readInput("Required signers (number)"));
+    const recipient = await readInput("To Address (C32)");
+    const contractAddress = await readInput("Token contract address");
+    const contractName = await readInput("Token contract name");
+    const amount = await readInput("Token amount to send (in smallest unit)");
+    const fee = await readInput("microSTX fee (optional)");
+    const nonce = await readInput("Nonce (optional)");
+    const network = await readInput("Network (optional) [testnet/mainnet]");
+    const memo = await readInput("Memo (optional)");
+
+    inputs = [
+      { sender, recipient, fee, amount, publicKeys, numSignatures, nonce, network, memo, contractAddress, contractName }
+    ];
+  }
+
+  // Generate transactions
+  const txs = await lib.makeTokenTransfers(inputs);
+  const txsEncoded = txs.map(lib.txEncode);
+
+  // Output transactions. Show extra headers and colors if we are not outputting to pipe or file
+  let outStream = console;
+  let outIsTerm = process.stdout.isTTY;
+
+  if (idxOutFile >= 0) {
+    const fileName = args[idxOutFile + 1];
+    const stdout = fs.createWriteStream(fileName);
+    const stderr = fs.createWriteStream(`${fileName}.err`);
+    outStream = new Console({ stdout, stderr });
+    outIsTerm = false;
+  }
+  if (outIsTerm) {
+    outStream.log(`Unsigned multisig token transaction(s)`);
+    outStream.log(`--------------------------------------`);
+  }
+  outStream.log(JSON.stringify(txsEncoded, null, 2));
+
+  // return value for unit testing
+  return txsEncoded;
+}
+
+export async function subcommand_create_sbtc_tx(args: string[]): Promise<string[]> {
+  // Process args
+  const idxJsonInputs = args.indexOf('--json-inputs');
+  const idxCsvInputs = args.indexOf('--csv-inputs');
+  const idxOutFile = args.indexOf('--out-file');
+
+  // Get inputs - for sBTC, we can use simplified input
+  let inputs: lib.MultisigTokenTxInput[];
+
+  if (idxJsonInputs >= 0) {
+    inputs = await lib.makeTokenTxInputsFromFile(args[idxJsonInputs + 1]);
+  } else if (idxCsvInputs >= 0) {
+    inputs = await lib.makeTokenTxInputsFromCSVFile(args[idxCsvInputs + 1]);
+  } else {
+    const sender = await readInput("From Address (C32)");
+    const publicKeys = (await readInput("From public keys (comma separate)")).split(',').map(x => x.trim());
+    const numSignatures = parseInt(await readInput("Required signers (number)"));
+    const recipient = await readInput("To Address (C32)");
+    const amount = await readInput("sBTC amount to send (in satoshis)");
+    const fee = await readInput("microSTX fee (optional)");
+    const nonce = await readInput("Nonce (optional)");
+    const network = await readInput("Network (optional) [testnet/mainnet]") || 'mainnet';
+    const memo = await readInput("Memo (optional)");
+
+    // Create sBTC-specific input
+    const sbtcInput = lib.createSbtcTransferInput(
+      recipient,
+      amount,
+      publicKeys,
+      numSignatures,
+      network as 'mainnet' | 'testnet',
+      { sender, fee, nonce, memo }
+    );
+
+    inputs = [sbtcInput];
+  }
+
+  // Generate transactions
+  const txs = await lib.makeTokenTransfers(inputs);
+  const txsEncoded = txs.map(lib.txEncode);
+
+  // Output transactions. Show extra headers and colors if we are not outputting to pipe or file
+  let outStream = console;
+  let outIsTerm = process.stdout.isTTY;
+
+  if (idxOutFile >= 0) {
+    const fileName = args[idxOutFile + 1];
+    const stdout = fs.createWriteStream(fileName);
+    const stderr = fs.createWriteStream(`${fileName}.err`);
+    outStream = new Console({ stdout, stderr });
+    outIsTerm = false;
+  }
+  if (outIsTerm) {
+    outStream.log(`Unsigned multisig sBTC transaction(s)`);
+    outStream.log(`-----------------------------------`);
+  }
+  outStream.log(JSON.stringify(txsEncoded, null, 2));
+
+  // return value for unit testing
+  return txsEncoded;
+}
+
 export async function subcommand_sign(args: string[], transport: Transport): Promise<string[]> {
   // Process args
   const idxJsonTxs = args.indexOf('--json-txs');
@@ -269,8 +387,31 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
 }
 
 export function subcommand_help() {
-  // TODO
-  console.log("Invalid subcommand. See README.md for usage");
+  console.log(`
+Multisig CLI tool for Stacks transactions
+
+Usage: npm start -- <subcommand> [args]
+
+Subcommands:
+  get_pub <path>     Get public key from Ledger
+  make_multi         Make multisig address from pubkeys
+  check_multi        Check multisig addresses derived from pubkeys
+  create_tx          Create unsigned STX multisig transaction
+  create_token_tx    Create unsigned SIP-10 token multisig transaction
+  create_sbtc_tx     Create unsigned sBTC multisig transaction
+  sign               Sign multisig transaction with Ledger
+  decode             Decode and print Stacks base64-encoded transaction
+  broadcast          Broadcast a transaction to the network
+
+Flags:
+  --json-inputs <path>  Read transaction inputs from JSON file
+  --csv-inputs <path>   Read transaction inputs from CSV file
+  --json-txs <path>     Allow bulk operations by reading JSON array from file
+  --csv-keys <path>     Sign using pubkeys/paths from a CSV file
+  --out-file <path>     Output JSON directly to file
+
+For more information, see README.md
+  `);
 }
 
 //=================
@@ -298,6 +439,12 @@ export async function main(args: string[]) {
     break;
   case 'create_tx':
     await subcommand_create_tx(args);
+    break;
+  case 'create_token_tx':
+    await subcommand_create_token_tx(args);
+    break;
+  case 'create_sbtc_tx':
+    await subcommand_create_sbtc_tx(args);
     break;
   case 'sign':
     transport = await getTransport();
