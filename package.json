@@ -18,10 +18,10 @@
   },
   "scripts": {
     "webpack": "webpack",
-    "cli": "ts-node ./src/index.ts",
+    "cli": "NODE_NO_WARNINGS=1 ts-node ./src/index.ts",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
-    "start": "npm run cli --",
+    "start": "npm run --silent cli --",
     "test": "vitest run"
   },
   "devDependencies": {

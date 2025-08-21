@@ -128,7 +128,6 @@ export function getStacksNetworkFromTx(tx: StacksTransaction, opts?: Partial<Stx
 
 export async function getPubKey(app: StxApp, path: string): Promise<string> {
   const amt = await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig);
-  console.log('Debug - amt response:', amt);
   
   if (!amt || !amt.publicKey) {
     throw new Error(`Failed to get public key from Ledger. Response: ${JSON.stringify(amt)}`);
@@ -862,8 +861,7 @@ export async function ledgerSignMultisigTx(app: StxApp, path: string, tx: Stacks
   const resp = await app.sign(path, signingBuffer);
 
   if (resp.returnCode !== LedgerError.NoErrors) {
-    console.log(resp);
-    throw new Error('Ledger responded with errors');
+    throw new Error(`Ledger responded with error ${resp.returnCode}: ${resp.errorMessage}`);
   }
 
   const signature = StxTx.createMessageSignature(resp.signatureVRS.toString('hex'));
@@ -878,7 +876,6 @@ export async function ledgerSignTx(app: StxApp, path: string, partialFields: Tra
   const outFields = partialFields.slice();
   const pubkeys = partialFields
     .map(x => {
-      console.log(x);
       if (x.contents.type === StxTx.StacksMessageType.PublicKey) {
         return bytesToHex(x.contents.data);
       } else {
@@ -909,13 +906,10 @@ export async function ledgerSignTx(app: StxApp, path: string, partialFields: Tra
   }
 
   if (resp.returnCode !== LedgerError.NoErrors) {
-    console.log(resp);
-    throw new Error('Ledger responded with errors');
+    throw new Error(`Ledger responded with error ${resp.returnCode}: ${resp.errorMessage}`);
   }
 
   const next_sighash = resp.postSignHash.toString("hex");
-
-  console.log(next_sighash);
 
   outFields[index] = StxTx.createTransactionAuthField(
     StxTx.PubKeyEncoding.Compressed,
@@ -940,8 +934,6 @@ export async function generateMultiSignedTx(): Promise<StacksTransaction> {
     '0205132dbd1270f66adaf43723940a98be6331abe95bfa53838815bf214a5a2150'
   ];
 
-  //console.log(pubkeys);
-  //console.log(makeMultiSigAddr(pubkeys, 2));
 
   const transaction = await StxTx.makeUnsignedSTXTokenTransfer({
     fee: 300n,
@@ -968,8 +960,6 @@ export async function generateMultiUnsignedTx() {
     '0205132dbd1270f66adaf43723940a98be6331abe95bfa53838815bf214a5a2150'
   ];
 
-  console.log(pubkeys);
-  console.log(makeMultiSigAddr(pubkeys, 2));
 
   const unsignedTx = await StxTx.makeUnsignedSTXTokenTransfer({
     fee: 300n,
