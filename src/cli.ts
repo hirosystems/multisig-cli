@@ -10,6 +10,42 @@ import * as StxNet from "@stacks/network";
 import * as StxTx from "@stacks/transactions";
 import * as lib from "./lib";
 
+class LazyErrorStream {
+  private errorStream: fs.WriteStream | null = null;
+  private errorFile: string;
+
+  constructor(errorFile: string) {
+    this.errorFile = errorFile;
+  }
+
+  write(data: string): void {
+    if (!this.errorStream) {
+      this.errorStream = fs.createWriteStream(this.errorFile);
+    }
+    this.errorStream.write(data);
+  }
+
+  end(): void {
+    if (this.errorStream) {
+      this.errorStream.end();
+    }
+  }
+}
+
+class LazyErrorConsole extends Console {
+  private lazyStderr: LazyErrorStream;
+
+  constructor(stdout: NodeJS.WritableStream, errorFile: string) {
+    const lazyStderr = new LazyErrorStream(errorFile);
+    super(stdout, lazyStderr as any);
+    this.lazyStderr = lazyStderr;
+  }
+
+  end(): void {
+    this.lazyStderr.end();
+  }
+}
+
 async function readInput(query: string): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -133,8 +169,7 @@ export async function subcommand_create_sip31_claim(args: string[]): Promise<str
   if (idxOutFile >= 0) {
     const fileName = args[idxOutFile + 1];
     const stdout = fs.createWriteStream(fileName);
-    const stderr = fs.createWriteStream(`${fileName}.err`);
-    outStream = new Console({ stdout, stderr });
+    outStream = new LazyErrorConsole(stdout, `${fileName}.err`);
     outIsTerm = false;
   }
   if (outIsTerm) {
@@ -186,8 +221,7 @@ export async function subcommand_create_tx(args: string[]): Promise<string[]> {
   if (idxOutFile >= 0) {
     const fileName = args[idxOutFile + 1];
     const stdout = fs.createWriteStream(fileName);
-    const stderr = fs.createWriteStream(`${fileName}.err`);
-    outStream = new Console({ stdout, stderr });
+    outStream = new LazyErrorConsole(stdout, `${fileName}.err`);
     outIsTerm = false;
   }
   if (outIsTerm) {
@@ -242,8 +276,7 @@ export async function subcommand_create_token_tx(args: string[]): Promise<string
   if (idxOutFile >= 0) {
     const fileName = args[idxOutFile + 1];
     const stdout = fs.createWriteStream(fileName);
-    const stderr = fs.createWriteStream(`${fileName}.err`);
-    outStream = new Console({ stdout, stderr });
+    outStream = new LazyErrorConsole(stdout, `${fileName}.err`);
     outIsTerm = false;
   }
   if (outIsTerm) {
@@ -304,8 +337,7 @@ export async function subcommand_create_sbtc_tx(args: string[]): Promise<string[
   if (idxOutFile >= 0) {
     const fileName = args[idxOutFile + 1];
     const stdout = fs.createWriteStream(fileName);
-    const stderr = fs.createWriteStream(`${fileName}.err`);
-    outStream = new Console({ stdout, stderr });
+    outStream = new LazyErrorConsole(stdout, `${fileName}.err`);
     outIsTerm = false;
   }
   if (outIsTerm) {
@@ -375,8 +407,7 @@ export async function subcommand_sign(args: string[], transport: Transport): Pro
   if (idxOutFile >= 0) {
     const fileName = args[idxOutFile + 1];
     const stdout = fs.createWriteStream(fileName);
-    const stderr = fs.createWriteStream(`${fileName}.err`);
-    outStream = new Console({ stdout, stderr });
+    outStream = new LazyErrorConsole(stdout, `${fileName}.err`);
     outIsTerm = false;
   }
   if (outIsTerm) {
@@ -450,8 +481,7 @@ export async function subcommand_broadcast(args: string[]): Promise<StxTx.TxBroa
   if (idxOutFile >= 0) {
     const fileName = args[idxOutFile + 1];
     const stdout = fs.createWriteStream(fileName);
-    const stderr = fs.createWriteStream(`${fileName}.err`);
-    outStream = new Console({ stdout, stderr });
+    outStream = new LazyErrorConsole(stdout, `${fileName}.err`);
   }
   outStream.log(JSON.stringify(results, null, 2));
 
