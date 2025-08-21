@@ -19,17 +19,17 @@ npm install
 npm start -- <subcommand> [args]
 ```
 
-| Subcommand        | Description                                                    |
-| ----------------- | -------------------------------------------------------------- |
-| `get_pub <path>`  | Get public key from Ledger                                     |
-| `make_multi`      | Make multisig address from pubkeys                             |
-| `check_multi`     | Check multisig addresses derived from pubkeys                  |
-| `create_tx`       | Create unsigned STX multisig transaction                       |
-| `create_token_tx` | Create unsigned SIP-10 token multisig transaction              |
-| `create_sbtc_tx`  | Create unsigned sBTC multisig transaction                       |
-| `sign`            | Sign multisig transaction with Ledger                          |
-| `decode`          | Decode and print Stacks base64-encoded transaction             |
-| `broadcast`       | Broadcast a transaction to the network                         |
+| Subcommand        | Arguments | Input Type | Description                                                    |
+| ----------------- | --------- | ---------- | -------------------------------------------------------------- |
+| `get_pub <path>`  | Path required (quotes needed) | None | Get public key from Ledger. Path examples: `"m/5757'/0'/0/0/0"` or `"m/44'/5757'/0/0/0"` |
+| `make_multi`      | None | Interactive prompts | Make multisig address. Choice to use existing pubkeys or generate from Ledger device |
+| `check_multi`     | None | Interactive prompts | Check multisig addresses derived from pubkeys. Prompts for comma-separated pubkeys and required signatures |
+| `create_tx`       | Optional flags | Interactive prompts or file | Create unsigned STX multisig transaction. Interactive mode prompts for all transaction details |
+| `create_token_tx` | Optional flags | Interactive prompts or file | Create unsigned SIP-10 token multisig transaction. Interactive mode prompts for contract details |
+| `create_sbtc_tx`  | Optional flags | Interactive prompts or file | Create unsigned sBTC multisig transaction. Interactive mode prompts for amount in satoshis |
+| `sign`            | Optional flags | Interactive prompts or file | Sign multisig transaction with Ledger. Prompts for base64 transaction and HD paths |
+| `decode`          | None | Interactive prompt | Decode and print Stacks base64-encoded transaction. Prompts for base64 input |
+| `broadcast`       | Optional flags | Interactive prompt or file | Broadcast a transaction to the network. Prompts for base64 signed transaction |
 
 | Flags                 | Subcommands                                         | Description                                           |
 | --------------------- | ----------------------------------------------------|-------------------------------------------------------|
@@ -39,6 +39,95 @@ npm start -- <subcommand> [args]
 | `--csv-keys <path>`   | `sign`                                              | Sign using pubkeys/paths from a CSV file              |
 | `--out-file <path>`   | `create_tx`, `create_token_tx`, `create_sbtc_tx`, `sign`, `broadcast` | Output JSON directly to file |
 | `--api-key <path>`    | `broadcast`                                         | Use Hiro API key to avoid rate limits                 |
+
+## Input Requirements and Formats
+
+### Interactive Input Guidelines
+
+When running commands without file flags, the CLI will prompt for inputs interactively. Here are the format requirements:
+
+**Public Keys:**
+- Format: Comma-separated list (no quotes needed)
+- Example: `03abc123..., 03def456..., 03ghi789...`
+- Spaces after commas are automatically trimmed
+
+**Addresses:**
+- Format: Standard Stacks addresses (C32 encoded)
+- Example: `SP1234567890ABCDEF...` or `SM1234567890ABCDEF...`
+
+**Amounts:**
+- STX amounts: In microSTX (1 STX = 1,000,000 microSTX)
+- sBTC amounts: In satoshis (1 sBTC = 100,000,000 satoshis)
+- Token amounts: In the smallest unit of the token
+
+**HD Derivation Paths:**
+- Format: Standard BIP44/BIP32 path (no quotes needed)
+- Examples: `m/5757'/0'/0/0/0`, `m/44'/5757'/0/0/0`
+- Use single quotes around hardened derivation numbers
+
+**Base64 Transactions:**
+- Format: Long base64-encoded string (no quotes needed)
+- Copy/paste the entire encoded transaction output from previous commands
+
+**Optional Fields:**
+- Press Enter to skip optional fields (fee, nonce, memo, etc.)
+- Empty responses are treated as "not provided"
+
+### File Input Requirements
+
+**File Paths:**
+- Use absolute or relative paths
+- No quotes needed around file paths in command line arguments
+- Example: `npm start -- create_tx --csv-inputs ./transactions.csv`
+
+### Sample Interactive Sessions
+
+**Creating an sBTC transaction:**
+```
+$ npm start -- create_sbtc_tx
+From Address (C32)? SM1QPJHSGMWH4NM346XS8Q2KVAB0DWPGZ5YFE1YVF
+From public keys (comma separate)? 03205eaf..., 0338e02b...
+Required signers (number)? 2
+To Address (C32)? SP11DP8H1Y9B7JYXC0T5AEZWENDWSSBCVKETSQ1R3
+sBTC amount to send (in satoshis)? 100
+microSTX fee (optional)? [Enter to skip]
+Nonce (optional)? [Enter to skip]
+Network (optional) [testnet/mainnet]? mainnet
+Memo (optional)? [Enter to skip]
+```
+
+**Creating a multisig address with existing pubkeys (default):**
+```
+$ npm start -- make_multi
+Use existing public keys? (y/n, default: y)? [Enter for default]
+Public keys (comma separated)? 03205eaf..., 0338e02b..., 0312a456...
+Required signers (number)? 2
+Making a 2-of-3 multisig address from provided keys...
+Pubkeys: 03205eaf..., 0338e02b..., 0312a456...
+Addr: SM1QPJHSGMWH4NM346XS8Q2KVAB0DWPGZ5YFE1YVF
+```
+
+**Creating a multisig address by generating keys from Ledger:**
+```
+$ npm start -- make_multi
+Use existing public keys? (y/n, default: y)? n
+Potential signers (number)? 3
+Required signers (number)? 2
+Making a 2-of-3 multisig address...
+Pubkeys: 03205eaf..., 0338e02b..., 0312a456...
+Paths: m/5757'/0'/0/0/0, m/5757'/0'/0/0/1, m/5757'/0'/0/0/2
+Addr: SM1QPJHSGMWH4NM346XS8Q2KVAB0DWPGZ5YFE1YVF
+```
+
+**Signing a transaction:**
+```
+$ npm start -- sign
+Unsigned or partially signed transaction input (base64)? AAAAAAEEBW9p...
+HD derivation path for 03205eaf... (empty to skip for this key)? m/5757'/0'/0/0/0
+    *** Please check and approve signing on Ledger ***
+HD derivation path for 0338e02b... (empty to skip for this key)? m/5757'/0'/0/0/1
+    *** Please check and approve signing on Ledger ***
+```
 
 ## Examples
 
@@ -58,18 +147,29 @@ This is especially useful when working with multiple transactions to avoid hitti
 
 ### Receiving Funds
 
-1. Get any Ledger public keys needed
+**Option A: Using existing public keys from multiple Ledger devices**
+1. Collect public keys from each participant's Ledger device:
    ```sh
-   npm start -- get_pub <path>
+   npm start -- get_pub "m/5757'/0'/0/0/0"
    ```
-   If you are unsure of what `path` to use to generate the pubkey for your account, try `m/5757'/0'/0/0/0` or `m/44'/5757'/0/0/0`
+   **Note:** Path argument requires quotes due to shell interpretation of single quotes
+   
+   If you are unsure of what `path` to use, try `"m/5757'/0'/0/0/0"` or `"m/44'/5757'/0/0/0"`
 
-2. Create a multisig address from pubkeys
+2. Create a multisig address from the collected pubkeys:
    ```sh
    npm start -- make_multi
+   # Choose "y" when prompted for existing public keys
    ```
 
-3. Use any wallet to send funds to the address
+**Option B: Generate all keys from a single Ledger device (testing only)**
+1. Create a multisig address by generating keys from connected Ledger:
+   ```sh
+   npm start -- make_multi
+   # Choose "n" when prompted for existing public keys
+   ```
+
+3. Use any wallet to send funds to the generated address
 
 ### Single STX Transaction Using User Input
 
