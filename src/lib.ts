@@ -2,8 +2,7 @@
 //import SpecTransport from "@ledgerhq/hw-transport-node-speculos";
 //import TransportNodeHid from "@ledgerhq/hw-transport-node-hid";
 
-import StxApp from "@zondax/ledger-blockstack";
-import { LedgerError } from "@zondax/ledger-blockstack";
+import StxApp, { LedgerError } from "@zondax/ledger-blockstack";
 import Papa from 'papaparse';
 
 import * as btc from "bitcoinjs-lib";
@@ -116,13 +115,13 @@ export function parseNetworkName(input: string | undefined): StacksNetworkName |
 // Create new `StacksNetwork` for mainnet or testnet, depending on contents of transaction
 export function getStacksNetworkFromTx(tx: StacksTransaction, opts?: Partial<StxNet.NetworkConfig> | undefined): StxNet.StacksNetwork {
   switch (tx.version) {
-    case StxTx.TransactionVersion.Mainnet:
-      return new StxNet.StacksMainnet(opts);
-    case StxTx.TransactionVersion.Testnet:
-      return new StxNet.StacksTestnet(opts);
-    default:
-      console.log(`Unknown value for \`tx.version\`: ${tx.version}. Assuming testnet`);
-      return new StxNet.StacksTestnet(opts);
+  case StxTx.TransactionVersion.Mainnet:
+    return new StxNet.StacksMainnet(opts);
+  case StxTx.TransactionVersion.Testnet:
+    return new StxNet.StacksTestnet(opts);
+  default:
+    console.log(`Unknown value for \`tx.version\`: ${tx.version}. Assuming testnet`);
+    return new StxNet.StacksTestnet(opts);
   }
 }
 
@@ -132,7 +131,7 @@ export async function getPubKey(app: StxApp, path: string): Promise<string> {
   if (!amt || !amt.publicKey) {
     throw new Error(`Failed to get public key from Ledger. Response: ${JSON.stringify(amt)}`);
   }
-  
+
   return amt.publicKey.toString('hex');
 }
 
@@ -159,13 +158,13 @@ export const cache = {
     } else {
       nonce = cachedNonce + 1n;
     }
-    this.nonces.set(addr, nonce)
+    this.nonces.set(addr, nonce);
     return nonce;
   },
 
   // Clear `this`
   clear() {
-    this.nonces.clear()
+    this.nonces.clear();
   }
 };
 
@@ -336,7 +335,7 @@ export function makeTxInputsFromCSVText(text: string): MultisigTxInput[] {
   });
   //console.dir(data, {depth: null, colors: true});
 
-  return validateTxInputs(data as object[]);
+  return validateTxInputs(data);
 }
 
 // Create transactions from file path
@@ -348,7 +347,7 @@ export async function makeTxInputsFromFile(file: string): Promise<MultisigTxInpu
 // Create transactions from raw string data (must be JSON array of `MultisigTxInput`)
 export function makeTxInputsFromText(text: string): MultisigTxInput[] {
   const data = JSON.parse(text);
-  return validateTxInputs(data as object[]);
+  return validateTxInputs(data);
 }
 
 // Create token transactions from CSV file path
@@ -402,7 +401,7 @@ export function makeTokenTxInputsFromCSVText(text: string): MultisigTokenTxInput
     }
   });
 
-  return validateTokenTxInputs(data as MultisigTokenTxInput[]);
+  return validateTokenTxInputs(data);
 }
 
 // Create token transactions from JSON file path
@@ -417,7 +416,7 @@ export function makeTokenTxInputsFromText(text: string): MultisigTokenTxInput[] 
   return validateTokenTxInputs(data);
 }
 
-export function validateTxInputs(data: object[]): MultisigTxInput[] {
+export function validateTxInputs(data: unknown): MultisigTxInput[] {
   const errorPrefix = 'Transaction input validation failed';
   const inputs = data as MultisigTxInput[];
 
@@ -472,7 +471,7 @@ export function validateTxInputs(data: object[]): MultisigTxInput[] {
   return data as MultisigTxInput[];
 }
 
-export function validateTokenTxInputs(data: object[]): MultisigTokenTxInput[] {
+export function validateTokenTxInputs(data: unknown): MultisigTokenTxInput[] {
   const errorPrefix = 'Token transaction input validation failed';
   const inputs = data as MultisigTokenTxInput[];
 
