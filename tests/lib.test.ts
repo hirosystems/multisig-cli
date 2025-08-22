@@ -313,3 +313,237 @@ describe('Transaction building', async () => {
     }
   });
 });
+
+describe('sBTC Configuration', () => {
+  it('Should have correct mainnet configuration', () => {
+    expect(lib.SBTC_CONFIG.mainnet).toEqual({
+      contractAddress: 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4',
+      contractName: 'sbtc-token',
+      decimals: 8
+    });
+  });
+
+  it('Should have correct testnet configuration', () => {
+    expect(lib.SBTC_CONFIG.testnet).toEqual({
+      contractAddress: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM',
+      contractName: 'sbtc-token',
+      decimals: 8
+    });
+  });
+});
+
+describe('Token transfer input creation', () => {
+  const recipient = 'ST2ZRX0K27GW0SP3GJCEMHD95TQGJMKB7G9Y0X1MH';
+  const amount = '100000000'; // 1 sBTC in satoshis
+  const publicKeys = [
+    "02b30fafab3a12372c5d150d567034f37d60a91168009a779498168b0e9d8ec7f2",
+    "03ce61f1d155738a5e434fc8a61c3e104f891d1ec71576e8ad85abb68b34670d35",
+    "03ef2340518b5867b23598a9cf74611f8b98064f7d55cdb8c107c67b5efcbc5c77",
+  ];
+  const numSignatures = 2;
+
+  it('Should create sBTC mainnet transfer input', () => {
+    const input = lib.createSbtcTransferInput(recipient, amount, publicKeys, numSignatures, 'mainnet');
+
+    expect(input).toEqual({
+      recipient,
+      amount,
+      publicKeys,
+      numSignatures,
+      contractAddress: lib.SBTC_CONFIG.mainnet.contractAddress,
+      contractName: lib.SBTC_CONFIG.mainnet.contractName,
+      decimals: lib.SBTC_CONFIG.mainnet.decimals,
+      network: 'mainnet'
+    });
+  });
+
+  it('Should create sBTC testnet transfer input', () => {
+    const input = lib.createSbtcTransferInput(recipient, amount, publicKeys, numSignatures, 'testnet');
+
+    expect(input).toEqual({
+      recipient,
+      amount,
+      publicKeys,
+      numSignatures,
+      contractAddress: lib.SBTC_CONFIG.testnet.contractAddress,
+      contractName: lib.SBTC_CONFIG.testnet.contractName,
+      decimals: lib.SBTC_CONFIG.testnet.decimals,
+      network: 'testnet'
+    });
+  });
+
+  it('Should create sBTC transfer input with optional parameters', () => {
+    const options = {
+      sender: 'SM2R12RQCV9SCAZPM37VSCVP4X3EQK1Y70KCV7EDE',
+      fee: '300',
+      nonce: '5',
+      memo: 'sBTC transfer'
+    };
+
+    const input = lib.createSbtcTransferInput(recipient, amount, publicKeys, numSignatures, 'mainnet', options);
+
+    expect(input).toEqual({
+      recipient,
+      amount,
+      publicKeys,
+      numSignatures,
+      contractAddress: lib.SBTC_CONFIG.mainnet.contractAddress,
+      contractName: lib.SBTC_CONFIG.mainnet.contractName,
+      decimals: lib.SBTC_CONFIG.mainnet.decimals,
+      network: 'mainnet',
+      ...options
+    });
+  });
+});
+
+describe('Token transaction validation', () => {
+  it('Should validate valid token transaction inputs', () => {
+    const validInputs = [
+      {
+        recipient: 'ST2ZRX0K27GW0SP3GJCEMHD95TQGJMKB7G9Y0X1MH',
+        amount: '100000000',
+        contractAddress: 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4',
+        contractName: 'sbtc-token',
+        publicKeys: ['02b30fafab3a12372c5d150d567034f37d60a91168009a779498168b0e9d8ec7f2'],
+        numSignatures: 1
+      }
+    ];
+
+    expect(() => lib.validateTokenTxInputs(validInputs)).not.toThrow();
+    const result = lib.validateTokenTxInputs(validInputs);
+    expect(result).toEqual(validInputs);
+  });
+
+  it('Should fail validation for missing required fields', () => {
+    const invalidInputs = [
+      {
+        recipient: 'ST2ZRX0K27GW0SP3GJCEMHD95TQGJMKB7G9Y0X1MH',
+        amount: '100000000',
+        // Missing contractAddress and contractName
+        publicKeys: ['02b30fafab3a12372c5d150d567034f37d60a91168009a779498168b0e9d8ec7f2'],
+        numSignatures: 1
+      }
+    ];
+
+    expect(() => lib.validateTokenTxInputs(invalidInputs)).toThrow(/contractAddress/);
+  });
+
+  it('Should fail validation for invalid field types', () => {
+    const invalidInputs = [
+      {
+        recipient: 'ST2ZRX0K27GW0SP3GJCEMHD95TQGJMKB7G9Y0X1MH',
+        amount: 100000000, // Should be string
+        contractAddress: 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4',
+        contractName: 'sbtc-token',
+        publicKeys: ['02b30fafab3a12372c5d150d567034f37d60a91168009a779498168b0e9d8ec7f2'],
+        numSignatures: 1
+      }
+    ];
+
+    expect(() => lib.validateTokenTxInputs(invalidInputs)).toThrow(/amount.*not valid/);
+  });
+});
+
+describe('Token transaction building', () => {
+  const recipient = 'ST2ZRX0K27GW0SP3GJCEMHD95TQGJMKB7G9Y0X1MH';
+  const publicKeys = [
+    "02b30fafab3a12372c5d150d567034f37d60a91168009a779498168b0e9d8ec7f2",
+    "03ce61f1d155738a5e434fc8a61c3e104f891d1ec71576e8ad85abb68b34670d35",
+    "03ef2340518b5867b23598a9cf74611f8b98064f7d55cdb8c107c67b5efcbc5c77",
+  ];
+
+  it('Should build sBTC token transfer transaction', async () => {
+    const input = lib.createSbtcTransferInput(
+      recipient,
+      '100000000', // 1 sBTC in satoshis
+      publicKeys,
+      2,
+      'testnet',
+      { fee: '300', nonce: '1' }
+    );
+
+    const tx = await lib.makeTokenTransfer(input);
+
+    // Check transaction type
+    expect(tx.payload.payloadType).toEqual(StxTx.PayloadType.ContractCall);
+
+    // Check contract call details
+    const payload = tx.payload as StxTx.ContractCallPayload;
+
+    // Convert contract address to string for comparison
+    const contractAddrStr = StxTx.addressToString(payload.contractAddress);
+    expect(contractAddrStr).toEqual(lib.SBTC_CONFIG.testnet.contractAddress);
+    expect(payload.contractName.content).toEqual(lib.SBTC_CONFIG.testnet.contractName);
+    expect(payload.functionName.content).toEqual('transfer');
+    expect(payload.functionArgs.length).toEqual(4);
+
+    // Check function arguments
+    expect(payload.functionArgs[0].type).toEqual(StxTx.ClarityType.UInt);
+    expect((payload.functionArgs[0] as StxTx.UIntCV).value).toEqual(100000000n);
+
+    expect(payload.functionArgs[1].type).toEqual(StxTx.ClarityType.PrincipalStandard);
+    expect(payload.functionArgs[2].type).toEqual(StxTx.ClarityType.PrincipalStandard);
+    const recipientAddr = StxTx.addressToString((payload.functionArgs[2] as StxTx.StandardPrincipalCV).address);
+    expect(recipientAddr).toEqual(recipient);
+
+    expect(payload.functionArgs[3].type).toEqual(StxTx.ClarityType.OptionalNone);
+
+    // Check auth fields
+    const info = lib.getAuthFieldInfo(tx);
+    expect(info).toEqual({
+      authFields: 3,
+      pubkeys: publicKeys,
+      signatures: 0,
+      signaturesRequired: 2,
+    });
+  });
+
+  it('Should build token transfer with memo', async () => {
+    const input: lib.MultisigTokenTxInput = {
+      recipient,
+      amount: '50000000',
+      contractAddress: 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4',
+      contractName: 'sbtc-token',
+      publicKeys,
+      numSignatures: 2,
+      fee: '300',
+      nonce: '1',
+      memo: 'Test transfer'
+    };
+
+    const tx = await lib.makeTokenTransfer(input);
+    const payload = tx.payload as StxTx.ContractCallPayload;
+
+    // Check memo argument
+    expect(payload.functionArgs[3].type).toEqual(StxTx.ClarityType.OptionalSome);
+    const memoOptional = payload.functionArgs[3] as StxTx.SomeCV;
+    expect(memoOptional.value.type).toEqual(StxTx.ClarityType.Buffer);
+    const memoBuffer = memoOptional.value as StxTx.BufferCV;
+    expect(Buffer.from(memoBuffer.buffer).toString('utf8')).toEqual('Test transfer');
+  });
+
+  it('Should build multiple token transfers', async () => {
+    const inputs: lib.MultisigTokenTxInput[] = [
+      lib.createSbtcTransferInput(recipient, '100000000', publicKeys, 2, 'mainnet', { fee: '300', nonce: '1' }),
+      lib.createSbtcTransferInput(recipient, '50000000', publicKeys, 2, 'mainnet', { fee: '400', nonce: '2' })
+    ];
+
+    const txs = await lib.makeTokenTransfers(inputs);
+    expect(txs.length).toEqual(2);
+
+    // Check each transaction
+    txs.forEach((tx, i) => {
+      expect(tx.payload.payloadType).toEqual(StxTx.PayloadType.ContractCall);
+      const payload = tx.payload as StxTx.ContractCallPayload;
+
+      // Convert contract address to string for comparison
+      const contractAddrStr = StxTx.addressToString(payload.contractAddress);
+      expect(contractAddrStr).toEqual(lib.SBTC_CONFIG.mainnet.contractAddress);
+      expect(payload.contractName.content).toEqual(lib.SBTC_CONFIG.mainnet.contractName);
+      expect(payload.functionName.content).toEqual('transfer');
+
+      const expectedAmount = i === 0 ? 100000000n : 50000000n;
+      expect((payload.functionArgs[0] as StxTx.UIntCV).value).toEqual(expectedAmount);
+    });
+  });
+});
