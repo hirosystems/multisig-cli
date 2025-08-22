@@ -196,48 +196,30 @@ You will need to copy/paste this between steps to manage application state.
    npm start -- broadcast
    ```
 
-### Single sBTC Transaction Using User Input
+### Single sBTC or SIP-10 Token Transaction Using User Input
 
-1. Create an sBTC transaction
-   ```sh
-   npm start -- create_sbtc_tx
-   ```
-
-2. For each required signature, sign with Ledger
-   ```sh
-   npm start -- sign
-   ```
-
-3. **[Optional]** Print transaction as JSON to check
-   ```sh
-   npm start -- decode
-   ```
-
-4. Broadcast transaction
-   ```sh
-   npm start -- broadcast
-   ```
-
-### Single SIP-10 Token Transaction Using User Input
-
-For other SIP-10 tokens (not sBTC), you need to specify the contract details:
+There is a special built in function for sBTC but for other SIP-10 tokens, you need to specify the contract details:
 
 1. Create a token transaction
    ```sh
    npm start -- create_token_tx
    ```
+   or, in the case of sBTC specifically
+      ```sh
+   npm start -- create_sbtc_tx
+   ```
 
-2. For each required signature, sign with Ledger
+3. For each required signature, sign with Ledger
    ```sh
    npm start -- sign
    ```
 
-3. **[Optional]** Print transaction as JSON to check
+4. **[Optional]** Print transaction as JSON to check
    ```sh
    npm start -- decode
    ```
 
-4. Broadcast transaction
+5. Broadcast transaction
    ```sh
    npm start -- broadcast
    ```
@@ -259,49 +241,36 @@ For other SIP-10 tokens (not sBTC), you need to specify the contract details:
    npm start -- broadcast --json-txs signed_transactions.json --out-file broadcast_results.json
    ```
 
-### Bulk sBTC Transactions
-
-1. Create sBTC transactions from a CSV file and save outputs to file
-   ```sh
-   npm start -- create_sbtc_tx --csv-inputs $CSV_INPUTS_FILE --out-file sbtc_transactions.json
-   ```
-
-2. Sign the transactions and save outputs to file
-   ```sh
-   npm start -- sign --json-txs sbtc_transactions.json --csv-keys $CSV_KEYS_FILE --out-file signed_sbtc_transactions.json
-   ```
-
-3. Broadcast transactions
-   ```sh
-   npm start -- broadcast --json-txs signed_sbtc_transactions.json --out-file sbtc_broadcast_results.json
-   ```
-
 ### Bulk SIP-10 Token Transactions
 
 1. Create token transactions from a CSV file and save outputs to file
    ```sh
    npm start -- create_token_tx --csv-inputs $CSV_INPUTS_FILE --out-file token_transactions.json
    ```
+   or, for sBTC
+      ```sh
+   npm start -- create_sbtc_tx --csv-inputs $CSV_INPUTS_FILE --out-file sbtc_transactions.json
+   ```
 
-2. Sign the transactions and save outputs to file
+3. Sign the transactions and save outputs to file
    ```sh
    npm start -- sign --json-txs token_transactions.json --csv-keys $CSV_KEYS_FILE --out-file signed_token_transactions.json
    ```
 
-3. Broadcast transactions
+4. Broadcast transactions
    ```sh
    npm start -- broadcast --json-txs signed_token_transactions.json --out-file token_broadcast_results.json
    ```
 
 ## Input File Formats
 
-### STX Transaction CSV Format
+### STX & sBTC Transaction CSV Format
 ```csv
 sender,recipient,amount,fee,nonce,network,memo,publicKeys/0,publicKeys/1,publicKeys/2,numSignatures
 SP123...,SP456...,1000000,300,,mainnet,Hello,03abc...,03def...,03ghi...,2
 ```
 
-### Token Transaction CSV Format
+### SIP-10 Token Transaction CSV Format
 ```csv
 sender,recipient,amount,fee,nonce,network,memo,contractAddress,contractName,publicKeys/0,publicKeys/1,publicKeys/2,numSignatures
 SP123...,SP456...,100000000,300,,mainnet,sBTC transfer,SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4,sbtc-token,03abc...,03def...,03ghi...,2
