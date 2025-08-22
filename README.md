@@ -205,7 +205,7 @@ There is a special built in function for sBTC but for other SIP-10 tokens, you n
    npm start -- create_token_tx
    ```
    or, in the case of sBTC specifically
-      ```sh
+   ```sh
    npm start -- create_sbtc_tx
    ```
 
@@ -248,7 +248,7 @@ There is a special built in function for sBTC but for other SIP-10 tokens, you n
    npm start -- create_token_tx --csv-inputs $CSV_INPUTS_FILE --out-file token_transactions.json
    ```
    or, for sBTC
-      ```sh
+   ```sh
    npm start -- create_sbtc_tx --csv-inputs $CSV_INPUTS_FILE --out-file sbtc_transactions.json
    ```
 
