@@ -127,7 +127,7 @@ export function getStacksNetworkFromTx(tx: StacksTransaction, opts?: Partial<Stx
 
 export async function getPubKey(app: StxApp, path: string): Promise<string> {
   const amt = await app.getAddressAndPubKey(path, StxTx.AddressVersion.TestnetSingleSig);
-  
+
   if (!amt || !amt.publicKey) {
     throw new Error(`Failed to get public key from Ledger. Response: ${JSON.stringify(amt)}`);
   }

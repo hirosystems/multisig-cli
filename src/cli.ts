@@ -101,10 +101,10 @@ export async function subcommand_decode(): Promise<StxTx.StacksTransaction> {
 
 export async function subcommand_make_multi(args: string[], transport: Transport): Promise<string> {
   const app = await getStxApp(transport);
-  
+
   const useExistingKeys = await readInput("Use existing public keys? (y/n, default: y)");
   let addr: string;
-  
+
   if (useExistingKeys.toLowerCase() === 'n' || useExistingKeys.toLowerCase() === 'no') {
     // Generate keys from Ledger (special case)
     const signers = parseInt(await readInput("Potential signers (number)"));
@@ -114,13 +114,13 @@ export async function subcommand_make_multi(args: string[], transport: Transport
     // Use existing public keys (default behavior)
     const publicKeys = (await readInput("Public keys (comma separated)")).split(',').map(x => x.trim());
     const requiredSignatures = parseInt(await readInput("Required signers (number)"));
-    
+
     console.log(`Making a ${requiredSignatures}-of-${publicKeys.length} multisig address from provided keys...`);
     console.log(`Pubkeys: ${publicKeys.join(', ')}`);
-    
+
     addr = lib.makeMultiSigAddr(publicKeys, requiredSignatures);
   }
-  
+
   console.log(`Addr: ${addr}`);
 
   // return value for unit testing
